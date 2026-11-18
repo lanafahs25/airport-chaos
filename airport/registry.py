@@ -32,6 +32,9 @@ class HashRegistry:
     
     #inserting a flight if it's not there already
     def insert (self, flight):
+        if (self.size+1)/ self.m > 0.6:
+            self._resize()
+
         i = self._hash(flight.flight_id)
         for j in range(self.m):
             if self.table[i] == None:
@@ -65,4 +68,20 @@ class HashRegistry:
     def load_factor (self):
         load = self.size/self.m
         return load
+    
+
+    def _resize(self):
+        old = self.table
+
+        self.m = 2*self.m
+        self.table = [None] * self.m
+
+        self.size = 0
+        self.tombstones = 0
+
+        for slot in old:
+            if slot is not None and slot is not _TOMB:
+                self.insert(slot)
+        return 
+
 
