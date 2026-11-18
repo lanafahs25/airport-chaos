@@ -30,3 +30,39 @@ class HashRegistry:
         hashed = ((self.a *k + self.b )% P)% self.m
 
         return hashed
+    
+    #inserting a flight if it's not there already
+    def insert (self, flight):
+        i = self._hash(flight.flight_id)
+        while True:
+            if self.table[i] == None:
+                self.table[i] = flight
+                self.size += 1
+                return True
+            
+            elif self.table[i].flight_id == flight.flight_id:
+                return False
+            self.collisions += 1
+            i = (i+1)%self.m  
+
+    #searching for the flight 
+    def lookup (self,fid):
+        i = self._hash(fid)
+        probes = 0
+
+        for j in range (self.m):
+            probes+=1
+            if self.table[i] == None:
+                return None, probes 
+        
+            elif self.table[i].flight_id == fid:
+                return self.table[i], probes 
+            
+            i = (i+1)%self.m
+        return None, probes
+    
+    #load factor alpha (n/m) 
+    def load_factor (self):
+        load = self.size/self.m
+        return load
+
