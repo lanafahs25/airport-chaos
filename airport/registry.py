@@ -1,8 +1,7 @@
-from base64 import encode
 import random
 
 P = (1 << 61) - 1      # 2^61 - 1, a Mersenne prime
-_TOMB = object()       # tombstone marker (round 3)
+_TOMB = object()       # tombstone marker 
 
 
 class HashRegistry:
@@ -34,7 +33,7 @@ class HashRegistry:
     #inserting a flight if it's not there already
     def insert (self, flight):
         i = self._hash(flight.flight_id)
-        while True:
+        for j in range(self.m):
             if self.table[i] == None:
                 self.table[i] = flight
                 self.size += 1
@@ -44,6 +43,7 @@ class HashRegistry:
                 return False
             self.collisions += 1
             i = (i+1)%self.m  
+        raise RuntimeError("Hash table is full!")
 
     #searching for the flight 
     def lookup (self,fid):
