@@ -40,3 +40,42 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
         self.size += 1
         return z
+
+
+    #sort the tree 
+    def inorder (self):
+        result = []
+        trail = []
+        x = self.root 
+
+        while x is not None or len(trail) != 0: 
+
+            while x is not None:
+
+                trail.append(x)
+                x = x.left
+
+            x = trail.pop()
+            result.append(x.flight)
+
+            x = x.right
+
+        return result 
+
+
+    #search the tree
+    def search (self, key):
+        x = self.root
+
+        while x is not None:
+            if key == x.key:
+                return x
+
+            elif key > x.key:
+                x = x.right
+
+            else:
+                x = x.left
+
+        return None
+        
