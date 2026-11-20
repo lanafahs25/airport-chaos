@@ -13,6 +13,8 @@ class HashRegistry:
         self.size = 0
         self.tombstones = 0
         self.collisions = 0
+        self.lookups = 0 
+        self.probes = 0
 
         rng = random.Random(seed)
 
@@ -96,10 +98,12 @@ class HashRegistry:
 
         i = self._hash(fid)
         probes = 0
+        self.lookups += 1
 
         for j in range (self.m):
 
-            probes+=1
+            probes+=1               #local probe: how many times we probe in one lookup 
+            self.probes += 1        #global probe: how many times we probe over all, used to compute the average
 
             if self.table[i] == None:
                 return None, probes 
@@ -163,5 +167,17 @@ class HashRegistry:
 
         return False
         
+    def stats(self):
+        avg_probes = 0
+        if self.lookups > 0:
+            avg_probes = self.probes / self.lookups 
+        return {
+            "size": self.size,                  # flights stored right now
+            "capacity": self.m,                 # number of slots
+            "load_factor": self.load_factor(),   # a method for this exists
+            "tombstones": self.tombstones,
+            "collisions": self.collisions,
+            "avg_probes": avg_probes,           # total_probes / lookups, but handle lookups == 0
+        }
 
 
