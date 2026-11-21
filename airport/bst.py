@@ -157,10 +157,13 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
                 
     def delete (self, target):
+
         if target.left is None:
             self._transplant(target, target.right)
+
         elif target.right is None:
             self._transplant(target, target.left)
+
         else:
             succ = self.minimum(target.right)
 
@@ -168,10 +171,39 @@ class RunwayBST:        #where the tree starts and how many nodes it has
                 self._transplant(succ, succ.right)
                 succ.right = target.right
                 succ.right.parent = succ 
+
             self._transplant (target, succ)
             succ.left = target.left
             succ.left.parent = succ 
         self.size -= 1
+
+    #skip before t1, stop if greater than t2
+    def range_search (self, t1, t2):
+        result = []
+        trail = []
+        x = self.root
+
+        while x is not None or len(trail) != 0:
+            while x is not None:
+                trail.append(x)
+
+                if x.key[0] >= t1:
+                    x = x.left
+                else:
+                    x = None
+
+            x = trail.pop()
+
+            if x.key [0] >= t2:
+                break
+
+            if x.key[0] >= t1:
+                result.append(x.flight)
+
+            x = x.right
+
+        return result
+
 
 
 
