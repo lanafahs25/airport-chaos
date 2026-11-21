@@ -204,7 +204,51 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
         return result
 
+    #predecessor for a time that isnt in the tree (no node to call predecessor on)
+    #node with the latest start <= t, who's right before or at t?
+    #walk down from the root and keep the best so far
+    def floor(self, t):
+        best = None
+        x = self.root
 
+        while x is not None:
+
+            if x.key[0] <= t:
+                best = x
+                x = x.right
+
+            else:
+                x = x.left
+        return best
+
+    #successor for a time that isnt in the tree (no node to call successor on)
+    #node with the earliest start >= t, who's right after or at t?
+    #walk down from the root and keep the best so far
+    def ceiling (self, t):
+        best = None
+        x = self.root
+
+        while x is not None:
+
+            if x.key[0] >= t:
+                best = x
+                x = x.left
+
+            else:
+                x = x.right
+        return best
+
+
+    def conflicts(self, start, end):
+        result = []
+        f = self.floor(start)
+
+        if f is not None and f.key[0] < start and f.end > start:
+            result.append(f.flight)
+
+        result += self.range_search(start, end)
+        return result 
+    
 
 
         
