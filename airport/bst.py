@@ -43,7 +43,7 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
 
     #sort the tree 
-    def inorder (self):
+    def inorder (self, nodes = False):
         result = []
         trail = []
         x = self.root 
@@ -56,7 +56,7 @@ class RunwayBST:        #where the tree starts and how many nodes it has
                 x = x.left
 
             x = trail.pop()
-            result.append(x.flight)
+            result.append(x if nodes else x.flight)
 
             x = x.right
 

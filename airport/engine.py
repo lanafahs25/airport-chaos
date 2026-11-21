@@ -12,16 +12,26 @@ class Engine:
         self.registry =  HashRegistry()
         self.runways = {}
 
-        for f in flights:
+        loaded = 0
 
-            self.registry.insert(f)
+        for f in flights:
 
             if f.runway not in self.runways:
                 self.runways[f.runway] = RunwayBST()
 
-            self.runways[f.runway].insert(f)
+            tree = self.runways[f.runway]
+            clashes = tree.conflicts (f.start, f.end)
 
-        return len(flights), errors
+            if len(clashes) != 0:
+                errors.append(f"{f.flight_id}: overlaps {clashes[0].flight_id} on {f.runway}, skipped")
+                continue
+
+            self.registry.insert(f)
+            tree.insert(f)
+            loaded += 1
+
+
+        return loaded, errors
 
 
 
@@ -103,4 +113,39 @@ class Engine:
 
         tree.insert(flight)
         return True, "rescheduled", []
-    
+
+
+
+    def check_consistency (self):
+        problems = []
+        tree_total = 0
+
+        for (name, tree) in self.runways.items():
+            for node in tree.inorder(nodes = True):
+                f = node.flight
+
+                if f.status == "CANCELLED":
+                    problems.append(f"{f.flight_id} on {name}: in tree but CANCELLED")
+
+                if f.runway != name:
+                    problems.append(f"{f.flight_id} on {name}: flight says runway {f.runway}")
+
+                if node.key != (f.start, f.flight_id):
+                    problems.append(f"{f.flight_id} on {name}: node key doesn't match flight times")
+
+                if self.find(f.flight_id)[0] is not f:
+                    problems.append(f"{f.flight_id} on {name}: registry doesn't return this flight")
+
+                tree_total += 1
+
+        active = 0
+        for f in self.registry.all_flights():
+            if f.status != "CANCELLED":
+                active += 1
+
+        if tree_total != active:
+            problems.append(f"trees hold {tree_total} flights but registry has {active} active")
+
+        return problems
+
+                

@@ -181,3 +181,13 @@ class HashRegistry:
         }
 
 
+    def all_flights(self):
+        result = []
+        for slot in self.table:
+            if slot is not None and slot is not _TOMB:
+                result.append(slot)
+        return result
+
+    
+
+
