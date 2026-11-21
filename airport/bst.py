@@ -78,4 +78,41 @@ class RunwayBST:        #where the tree starts and how many nodes it has
                 x = x.left
 
         return None
+
+
+    def minimum(self, x):
+        while x.left is not None:
+            x = x.left
+        return x
+
+    def maximum(self, x):
+        while x.right is not None:
+            x = x.right
+        return x
+
+    def successor(self, x):
+        if x.right is not None:
+            return self.minimum(x.right)
+        
+        y = x.parent
+
+        while y is not None and x is y.right:
+            x = y
+            y = y.parent
+
+        return y
+
+
+    def predecessor(self, x):
+        if x.left is not None:
+            return self.maximum(x.left)
+        
+        y = x.parent
+
+        while y is not None and x is y.left:
+            x = y
+            y = y.parent
+
+        return y
+
         
