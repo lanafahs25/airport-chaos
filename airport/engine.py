@@ -67,6 +67,40 @@ class Engine:
 
         tree.delete(node)
         flight.status = "CANCELLED"
-        
+
         return True, "cancelled"
 
+    def reschedule (self, fid, new_start):
+
+        flight = self.find(fid)[0]
+
+        if flight is None:
+            return False, "no such flight", []
+        
+        if flight.status == "CANCELLED":
+            return False, "this flight is cancelled", []
+
+        duration = flight.end - flight.start
+        new_end = new_start + duration 
+        tree = self.runways[flight.runway]
+
+        tree.delete(tree.search((flight.start, flight.flight_id))) #out of the way
+
+        clashes = tree.conflicts (new_start, new_end)
+
+        if len(clashes)!= 0:
+            tree.insert (flight)                                    #rollback: times unchanged 
+            return False, "runway conflict" , clashes
+
+        flight.start = new_start
+        flight.end = new_end
+
+        if new_start > flight.orig_start:
+            flight.status = "DELAYED"
+
+        else:
+            flight.status = "SCHEDULED"
+
+        tree.insert(flight)
+        return True, "rescheduled", []
+    
