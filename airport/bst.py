@@ -115,4 +115,29 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
         return y
 
+    def height(self):
+        if self.root is None:
+            return 0
+
+        h = 0
+        level = [self.root]
+
+        while len(level)!= 0:
+            h+=1
+            next_level = []
+
+            for node in level:
+                if node.left is not None:
+                    next_level.append(node.left)
+
+                if node.right is not None:
+                    next_level.append(node.right)
+
+            level = next_level
+
+        return h
+                
+                
+
+
         
