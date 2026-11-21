@@ -136,8 +136,43 @@ class RunwayBST:        #where the tree starts and how many nodes it has
             level = next_level
 
         return h
+
+
+    #helper method: instead of having a parent be attached to a child 3 times in the same code, 
+    #create helper method (transplant) to help rewire the links 
+    #in this case old is the node whose spot is being replaced/deleted (taken over) 
+
+    def _transplant (self, old , replacement):
+        if old.parent is None:                  #old was the root
+            self.root = replacement
+
+        elif old is old.parent.left:            #old was a left child
+            old.parent.left = replacement
+        else:
+            old.parent.right = replacement      #old was a right child
+
+
+        if replacement is not None:
+            replacement.parent = old.parent     #link back up
+
                 
-                
+    def delete (self, target):
+        if target.left is None:
+            self._transplant(target, target.right)
+        elif target.right is None:
+            self._transplant(target, target.left)
+        else:
+            succ = self.minimum(target.right)
+
+            if succ.parent is not target:
+                self._transplant(succ, succ.right)
+                succ.right = target.right
+                succ.right.parent = succ 
+            self._transplant (target, succ)
+            succ.left = target.left
+            succ.left.parent = succ 
+        self.size -= 1
+
 
 
         
