@@ -24,8 +24,12 @@ class Engine:
         return len(flights), errors
 
 
+
     def find(self, fid):
         return self.registry.lookup(fid)
+
+
+
 
     def add (self, flight):
         existing = self.find(flight.flight_id)[0]
@@ -47,5 +51,22 @@ class Engine:
         tree.insert (flight)
         return True, "added", []
 
-    
+
+
+    def cancel (self, fid):
+        flight = self.find(fid)[0]
+
+        if flight is None:
+            return False, "no such flight"
+
+        if flight.status == "CANCELLED":
+            return False, "already cancelled"
+
+        tree = self.runways[flight.runway]
+        node = tree.search((flight.start, flight.flight_id))
+
+        tree.delete(node)
+        flight.status = "CANCELLED"
+        
+        return True, "cancelled"
 
