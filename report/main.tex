@@ -1,0 +1,385 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\todo}[1]{\textbf{\textcolor{red}{TODO: #1}}}
+\lstset{basicstyle=\ttfamily\small, columns=fullflexible}
+
+\begin{document}
+
+% ------------------------------------------------------------------ title
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\LARGE\bfseries Airport Chaos\par}
+\vspace{0.4cm}
+{\Large Flight Scheduling \& Crisis Recovery Engine\par}
+\vspace{1.2cm}
+{\large CP3 Final Project --- CSC310 Algorithms and Data Structures\par}
+\vspace{0.3cm}
+{\large Instructor: Dr.\ Mohamed Watfa\par}
+\vspace{1.5cm}
+{\large Lana Fahs \quad ID: \todo{fill in}\par}
+\vspace{0.3cm}
+{\large Solo project (approved by the instructor)\par}
+\vspace{1.5cm}
+{\large Submission date: December 1, 2026\par}
+\vspace{0.8cm}
+{\large GitHub repository:\\[0.2cm]
+\href{https://github.com/lanafahs25/ground-stop-scheduler}{\texttt{https://github.com/lanafahs25/ground-stop-scheduler}}\par}
+\vfill
+{\small Interview commit tag: \texttt{interview-2026-11-28}\par}
+\end{titlepage}
+
+% ------------------------------------------------------------------ architecture
+\section{Architecture}
+
+The system is a command-line airport scheduler written in Python. It is split
+into layers, and each layer has one responsibility:
+
+\begin{enumerate}
+  \item \textbf{Data} (\texttt{flight.py}, \texttt{loader.py}): a \texttt{Flight}
+  record and a CSV loader that validates every row (timestamp format,
+  \texttt{start < end}, priority $\in\{1,2,3\}$, duplicate IDs) and reports bad
+  rows with their line number instead of stopping. Each flight also keeps its
+  original times (\texttt{orig\_start}, \texttt{orig\_end}) so that later
+  analysis can refer to the original schedule after delays.
+  \item \textbf{Storage}: a hash registry (\texttt{registry.py}) holding
+  \emph{every} flight by ID, and one binary search tree per runway
+  (\texttt{bst.py}) holding only the \emph{active} (non-cancelled) flights,
+  ordered by time.
+  \item \textbf{Engine} (\texttt{engine.py}): the only component allowed to
+  modify the registry and the trees. Every operation (load, add, cancel,
+  reschedule) goes through it, which is how the two structures are kept
+  synchronised.
+  \item \textbf{Interface}: the CLI menu and batch runner \todo{CLI}, and an
+  optional GUI \todo{GUI}. Both call engine methods only.
+\end{enumerate}
+
+Runways are not hard-coded: the engine creates one tree per runway name found in
+the data, so files with other runways work unchanged.
+
+% ------------------------------------------------------------------ mapping
+\section{Module-to-algorithm mapping}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Requirement & File & Algorithm / structure \\
+\midrule
+A. Flight registry & \texttt{registry.py} & Universal hashing, linear probing, tombstones, resizing \\
+B. Runway scheduler & \texttt{bst.py} & Unbalanced BST, floor/ceiling, range search \\
+Synchronisation & \texttt{engine.py} & Engine layer + consistency check \\
+C. Crisis scenarios & \todo{file} & Greedy recovery rule \\
+D. Sorting & \todo{file} & Counting sort, LSD radix sort \\
+E. Disruption analysis & \todo{file} & Divide-and-conquer maximum subarray \\
+F. Route matrix & \todo{file} & Classical and Strassen multiplication \\
+G. Rule IDs & \todo{file} & FKS two-level perfect hashing \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------------ A
+\section{A. Flight registry: universal hashing with open addressing}
+
+\subsection{Encoding IDs as integers}
+Flight IDs are alphanumeric strings, so each ID is first turned into an integer
+with a polynomial encoding in base 131:
+\[
+k = \Bigl(\sum_{i} \mathrm{ord}(c_i)\cdot 131^{\,n-1-i}\Bigr) \bmod p .
+\]
+Base 131 is larger than the largest character code used in IDs
+(\texttt{z} = 122), so the encoding behaves like a number written in base 131
+and different IDs give different integers. Since $131^8 < p$, the encoding is
+exactly injective for IDs of up to 8 characters; all official IDs have 7.
+A smaller base such as 31 would not be injective:
+\texttt{"Ab"} and \texttt{"BC"} both encode to 2113.
+Lookups still compare the full original ID strings, so even an encoding
+collision on longer IDs could never return the wrong flight.
+
+\subsection{Universal hash function}
+\[
+h(k) = \bigl((a\cdot k + b) \bmod p\bigr) \bmod m,
+\qquad p = 2^{61}-1,\; a \in [1,p-1],\; b\in[0,p-1].
+\]
+$p$ is a Mersenne prime, which satisfies the two conditions of universal hashing
+(CLRS \S11.3.3): it is prime, and it is larger than every encoded key.
+$a$ and $b$ are drawn once from \texttt{random.Random(42)}, so the function is
+random with respect to the input but the program is deterministic across runs.
+The table starts with $m = 16$ slots.
+
+\subsection{Linear probing, tombstones and resizing}
+Collisions are resolved with linear probing: if slot $i$ is taken, try
+$(i+1) \bmod m$. A slot is either empty, a flight, or a \emph{tombstone}.
+
+\begin{itemize}
+  \item \textbf{Lookup} walks from $h(k)$ and stops at the matching ID or at an
+  empty slot. Tombstones are stepped over, because the target may lie further
+  along the probe chain.
+  \item \textbf{Delete} replaces the flight with a tombstone instead of emptying
+  the slot. Emptying it would break the probe chain: a later flight that was
+  pushed past this slot by a collision would become unreachable.
+  \item \textbf{Insert} remembers the first tombstone it passes but keeps
+  scanning until an empty slot, to make sure the ID is not already stored
+  further along. It then places the flight in that first tombstone if there
+  was one, otherwise in the empty slot. Duplicate IDs are rejected.
+  \item \textbf{Resize}: before each insert, if
+  $(\text{size}+\text{tombstones}+1)/m > 0.6$, the table doubles and every
+  flight is reinserted. Tombstones are counted because they occupy slots and
+  lengthen probe chains; resizing also discards them. Flights must be
+  reinserted rather than copied to the same index, because their slot depends
+  on $m$.
+  \item Every loop is bounded by $m$ probes, so a full table raises an error
+  instead of looping forever (resizing prevents this in practice).
+\end{itemize}
+
+\begin{algorithm}[h]
+\caption{Registry insert (matches \texttt{HashRegistry.insert})}
+\begin{algorithmic}[1]
+\Procedure{Insert}{$f$}
+  \If{$(\mathit{size}+\mathit{tombstones}+1)/m > 0.6$} \Call{Resize}{} \EndIf
+  \State $i \gets h(f.\mathit{id})$; \quad $\mathit{firstTomb} \gets \textsc{nil}$
+  \For{$j \gets 1$ \textbf{to} $m$}
+    \If{$T[i] = \textsc{nil}$}
+      \If{$\mathit{firstTomb} \neq \textsc{nil}$}
+        \State $T[\mathit{firstTomb}] \gets f$; \quad $\mathit{tombstones} \gets \mathit{tombstones}-1$
+      \Else
+        \State $T[i] \gets f$
+      \EndIf
+      \State $\mathit{size} \gets \mathit{size}+1$; \Return \textsc{true}
+    \ElsIf{$T[i] = \textsc{tomb}$}
+      \If{$\mathit{firstTomb} = \textsc{nil}$} $\mathit{firstTomb} \gets i$ \EndIf
+    \ElsIf{$T[i].\mathit{id} = f.\mathit{id}$}
+      \State \Return \textsc{false} \Comment{duplicate}
+    \EndIf
+    \State $\mathit{collisions} \gets \mathit{collisions}+1$; \quad $i \gets (i+1) \bmod m$
+  \EndFor
+  \If{$\mathit{firstTomb} \neq \textsc{nil}$}
+    \State $T[\mathit{firstTomb}] \gets f$; update counters; \Return \textsc{true}
+  \EndIf
+  \State \textbf{error} ``table full''
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[h]
+\caption{Registry lookup and delete (match \texttt{lookup}, \texttt{delete})}
+\begin{algorithmic}[1]
+\Procedure{Lookup}{$\mathit{id}$}
+  \State $i \gets h(\mathit{id})$; \quad $\mathit{probes} \gets 0$
+  \For{$j \gets 1$ \textbf{to} $m$}
+    \State $\mathit{probes} \gets \mathit{probes}+1$
+    \If{$T[i] = \textsc{nil}$} \Return $(\textsc{nil}, \mathit{probes})$
+    \ElsIf{$T[i] \neq \textsc{tomb}$ \textbf{and} $T[i].\mathit{id} = \mathit{id}$} \Return $(T[i], \mathit{probes})$
+    \EndIf
+    \State $i \gets (i+1) \bmod m$
+  \EndFor
+  \State \Return $(\textsc{nil}, \mathit{probes})$
+\EndProcedure
+\Statex
+\Procedure{Delete}{$\mathit{id}$}
+  \State walk as in \textsc{Lookup}; on a match: $T[i] \gets \textsc{tomb}$,
+  $\mathit{size} \gets \mathit{size}-1$, $\mathit{tombstones} \gets \mathit{tombstones}+1$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Measured behaviour on the official file}
+After loading all 1{,}000 flights the table has grown from 16 to 2{,}048 slots
+(7 resizes) and has load factor $\alpha = 0.488$. Looking up all 1{,}000 IDs
+took on average \textbf{1.67 probes} per lookup.
+For comparison, the classical estimate for a successful search with linear
+probing is $\tfrac12\bigl(1 + \tfrac{1}{1-\alpha}\bigr) \approx 1.48$ at this
+load factor, so the measurement is close to theory.
+The collision counter reports 5{,}583; this includes the collisions that happen
+while flights are reinserted during the 7 resizes, not only those of the final
+table.
+
+% ------------------------------------------------------------------ B
+\section{B. Runway scheduler: one BST per runway}
+
+\subsection{Keys and invariant}
+Each runway has its own unbalanced BST. A node stores the key
+$(\mathit{start}, \mathit{flight\_id})$, the end time and a reference to the
+flight. Using the pair as the key makes every key unique, and Python compares
+tuples lexicographically (start first, then ID). Each node also stores a parent
+pointer, which successor, predecessor and delete use to walk upwards.
+
+\textbf{Invariant:} the flights in a runway tree never overlap. Intervals are
+half-open, $[\mathit{start}, \mathit{end})$, so a flight ending at 09:20 does
+not conflict with one starting at 09:20. Different runways have separate trees,
+so they can never conflict.
+
+All operations are written iteratively (loops and an explicit stack for the
+inorder walk), so a degenerate tree cannot exceed Python's recursion limit.
+
+\subsection{Operations}
+\begin{itemize}
+  \item \textbf{Insert, search, minimum, maximum, successor, predecessor}:
+  standard CLRS algorithms (\S12.2--12.3), $O(h)$.
+  \item \textbf{Inorder}: iterative with an explicit stack; returns the runway
+  schedule in time order, $O(n)$.
+  \item \textbf{Delete}: the three CLRS cases using a \textsc{Transplant} helper;
+  a node with two children is replaced by its successor. Root deletion is
+  handled by \textsc{Transplant} when the node has no parent.
+  \item \textbf{Range search} $[t_1, t_2)$: an inorder walk that skips left
+  subtrees whose root starts before $t_1$ and stops at the first node starting
+  at or after $t_2$; $O(h + k)$ for $k$ results.
+  \item \textbf{Floor / ceiling}$(t)$: the node with the latest start $\le t$ /
+  the earliest start $\ge t$, i.e.\ predecessor and successor of a time that is
+  not itself in the tree; $O(h)$.
+  \item \textbf{Height}: computed level by level; $O(n)$.
+\end{itemize}
+
+\subsection{Conflict check}
+To test a proposed interval $[s, e)$ against a conflict-free runway, only two
+kinds of flight can overlap it:
+\begin{enumerate}
+  \item a flight that started \emph{before} $s$ and is still running. Because the
+  schedule has no overlaps, only the latest such flight can still be running,
+  which is $\textsc{Floor}(s)$;
+  \item flights that start \emph{inside} $[s, e)$, found by range search.
+\end{enumerate}
+
+\begin{algorithm}[h]
+\caption{Conflict check (matches \texttt{RunwayBST.conflicts})}
+\begin{algorithmic}[1]
+\Procedure{Conflicts}{$s, e$}
+  \State $R \gets [\,]$; \quad $f \gets \Call{Floor}{s}$
+  \If{$f \neq \textsc{nil}$ \textbf{and} $f.\mathit{start} < s$ \textbf{and} $f.\mathit{end} > s$}
+    \State append $f$ to $R$
+  \EndIf
+  \State append \Call{RangeSearch}{$s, e$} to $R$
+  \State \Return $R$ \Comment{empty means the slot is free}
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+The strict test $f.\mathit{start} < s$ prevents a flight starting exactly at $s$
+from being listed twice, since range search already includes it. The test
+$f.\mathit{end} > s$ implements the half-open boundary. The total cost is
+$O(h + k)$.
+
+\subsection{Measured tree heights}
+For 200 flights a perfectly balanced tree would have height
+$\lceil \log_2 201 \rceil = 8$, and a degenerate chain would have height 200.
+Loading the official file (whose rows are in random time order) gives:
+
+\begin{center}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Runway & R1 & R2 & R3 & R4 & R5 \\
+\midrule
+Flights & 200 & 200 & 200 & 200 & 200 \\
+Height  & 16 & 15 & 14 & 16 & 14 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Reinserting the R1 flights in sorted time order produces a tree of height
+\textbf{200}, the $O(n)$ worst case of an unbalanced BST.
+\todo{full sorted-vs-shuffled timing benchmark}
+
+% ------------------------------------------------------------------ engine
+\section{Engine and consistency}
+
+The engine owns one registry and one tree per runway, and every change goes
+through it.
+
+\begin{itemize}
+  \item \textbf{Load} starts from fresh structures every time (so each scenario
+  can be run from a clean state), and checks each flight against its runway
+  tree before inserting it. A flight that would overlap an earlier one is
+  skipped and reported, so the no-overlap invariant holds even for an
+  unexpected input file.
+  \item \textbf{Add} checks for a duplicate ID and for runway conflicts first,
+  and only modifies the structures when every check passes, returning the
+  conflicting flights otherwise.
+  \item \textbf{Cancel} removes the flight from its runway tree, so it no longer
+  blocks the runway, but keeps it in the registry with status
+  \texttt{CANCELLED}.
+  \item \textbf{Reschedule} keeps the flight's duration and runway. It first
+  removes the flight from its tree (otherwise it would conflict with its own old
+  slot), then checks the new interval. On a conflict the flight is reinserted
+  with its unchanged times (rollback); otherwise its times are updated and it is
+  reinserted. The registry needs no change, because it is keyed by ID and holds
+  a reference to the same flight object.
+  \item \textbf{Consistency check} verifies that every tree node is active, on
+  the right runway, has a key matching the flight's current times, and is the
+  same object the registry returns, and that the number of tree nodes equals
+  the number of active flights in the registry. It returns a list of problems
+  (empty means consistent) and is used by the tests after every kind of update.
+\end{itemize}
+
+% ------------------------------------------------------------------ remaining
+\section{C. Crisis scenarios}
+\todo{recovery rule, scenarios A/B/C, result tables}
+
+\section{D. Counting sort, radix sort and the lower bound}
+\todo{}
+
+\section{E. Divide-and-conquer disruption analysis}
+\todo{}
+
+\section{F. Classical and Strassen multiplication}
+\todo{}
+
+\section{G. Static perfect hashing}
+\todo{}
+
+\section{Testing}
+\todo{list of automated tests and results}
+
+\section{Benchmarks}
+\todo{environment, sizes, repeats, plots, interpretation}
+
+% ------------------------------------------------------------------ complexity
+\section{Complexity summary}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Operation & Average & Worst case \\
+\midrule
+Registry insert / lookup / delete & $O(1)$ expected ($\alpha \le 0.6$) & $O(m)$ \\
+Registry resize & $O(m)$, amortised $O(1)$ per insert & $O(m)$ \\
+BST insert / search / delete & $O(h)$, $h = O(\log n)$ for random order & $O(n)$ \\
+BST successor / predecessor / floor / ceiling & $O(h)$ & $O(n)$ \\
+BST range search ($k$ results) & $O(h + k)$ & $O(n)$ \\
+BST conflict check & $O(h + k)$ & $O(n)$ \\
+BST inorder / height & $O(n)$ & $O(n)$ \\
+\midrule
+Crisis scenarios & \todo{} & \\
+Counting / radix sort & \todo{} & \\
+Maximum subarray & \todo{} & \\
+Classical / Strassen & \todo{} & \\
+FKS perfect hashing & \todo{} & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Limitations}
+\todo{}
+
+\section{AI and tool-use disclosure}
+\todo{Write this yourself. Suggested contents: Claude (Anthropic) was used for
+explanations of the algorithms, debugging help, and design discussion of
+project-specific parts (conflict check, engine synchronisation, tombstone reuse);
+algorithms follow CLRS and the lecture pseudocode; all code was written and tested
+by me. A first draft of this report was generated with Claude from my code and
+measurements, then reviewed and edited by me. The optional GUI was generated with
+\ldots}
+
+\section{Contributions}
+Solo project, approved by the instructor. All work by Lana Fahs.
+
+\end{document}
