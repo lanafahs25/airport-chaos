@@ -57,7 +57,60 @@ def run_command(engine, line):
             else:
                 for f in engine.runways[name].inorder():
                     print(f"{f.flight_id} {fmt(f.start)}-{fmt(f.end)} P{f.priority} {f.status}")
-        
+
+
+
+        elif cmd == "CANCEL":
+            ok, msg = engine.cancel(args[0])
+            print(f"{args[0]}: {msg}")
+
+        elif cmd == "RESCHEDULE":
+            ok, msg, clashes = engine.reschedule(args[0], t(args[1]))
+            print(f"{args[0]}: {msg}")
+            for c in clashes:
+                print(f"   conflicts with {c.flight_id} {fmt(c.start)}-{fmt(c.end)}")
+
+        elif cmd == "CHECK_CONFLICT":
+            name, s, e2 = args[0], t(args[1]), t(args[2])
+            if name not in engine.runways:
+                print(f"{name}: no flights, slot is free")
+            else:
+                clashes = engine.runways[name].conflicts(s, e2)
+                if len(clashes) == 0:
+                    print(f"{name} {fmt(s)}-{fmt(e2)}: free")
+                else:
+                    print(f"{name} {fmt(s)}-{fmt(e2)}: conflicts with "
+                          + ", ".join(c.flight_id for c in clashes))
+
+        elif cmd == "MASS_CANCEL":
+            ids = engine.mass_cancel(t(args[0]), t(args[1]))
+            print(f"cancelled {len(ids)} flights: " + ", ".join(ids))
+
+        elif cmd in ("ADD", "EMERGENCY_INSERT"):
+            fid, airline, origin, dest, runway = args[0:5]
+            start, end, prio = t(args[5]), t(args[6]), int(args[7])
+            if start >= end or prio not in (1, 2, 3):
+                print(f"{cmd}: start must be before end and priority must be 1-3")
+            else:
+                f = Flight(fid, airline, origin, dest, runway, start, end, prio)
+                if cmd == "ADD":
+                    ok, msg, clashes = engine.add(f)
+                    print(f"{fid}: {msg}")
+                else:
+                    accept = len(args) > 8 and args[8].upper() == "ACCEPT"
+                    ok, msg, clashes, slot = engine.emergency_insert(f, accept)
+                    print(f"{fid}: {msg}")
+                    if clashes:
+                        print("   conflicts with " + ", ".join(c.flight_id for c in clashes))
+                    if slot is not None:
+                        print(f"   slot: {fmt(slot)}" + ("" if ok else "  (add ACCEPT to insert)"))
+
+        elif cmd == "HELP":
+            print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
+            print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
+            print('ADD id airline origin dest R "start" "end" prio')
+            print('EMERGENCY_INSERT id airline origin dest R "start" "end" prio [ACCEPT]')
+            print('RUNWAY_CLOSURE R "start" "end" | MASS_CANCEL "start" "end" | QUIT')
 
         else:
             print(f"Unknown command: {cmd}")
