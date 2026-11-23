@@ -1,3 +1,4 @@
+from datetime import timedelta
 from .loader import load_flights
 from .registry import HashRegistry
 from .bst import RunwayBST
@@ -147,5 +148,81 @@ class Engine:
             problems.append(f"trees hold {tree_total} flights but registry has {active} active")
 
         return problems
+
+
+    def runway_closure (self, runway, close_start, close_end):
+        tree = self.runways [runway]
+        affected = tree.conflicts (close_start, close_end)
+
+        for f in affected:
+            #clear out first
+            tree.delete(tree.search((f.start, f.flight_id)))
+
+        affected = sort_affected(affected)
+        rows = [] 
+        delayed = 0
+        cancelled = 0
+        total_delay = 0
+
+        for f in affected: 
+            old_start = f.start
+            duration = f.end - f.start
+            candidate = close_end
+            placed = False
+
+            while candidate - f.orig_start <= timedelta(minutes = 120):
+                if len(tree.conflicts (candidate, candidate + duration)) == 0:
+                    f.start = candidate
+                    f.end = candidate + duration
+                    f.status = "DELAYED"
+                    tree.insert(f)
+                    placed = True
+                    break
+                candidate = candidate + timedelta(minutes = 5)
+
+            if placed == True:
+
+                delayed += 1
+                total_delay += int((f.start - f.orig_start).total_seconds() // 60)
+                rows.append((f.flight_id, old_start, f.start, "DELAYED"))
+
+
+            else:
+                f.status = "CANCELLED"
+                cancelled += 1
+                rows.append((f.flight_id, old_start, None, "CANCELLED"))
+
+        return rows, len(affected), delayed, cancelled, total_delay
+
+    
+
+
+
+
+
+        
+
+
+
+ #helper function for comparing 3 things at once
+def key (f):
+     return (f.priority, f.orig_start, f.flight_id)
+
+
+#normal insertion sort 
+def sort_affected(flights):
+    for i in range(1, len(flights)):
+
+        current = flights[i]
+        j = i - 1
+
+        while j >= 0 and key(flights[j]) > key(current):
+
+            flights[j + 1] = flights[j]
+            j -= 1
+            
+        flights[j + 1] = current
+    return flights
+
 
                 
