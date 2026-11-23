@@ -79,7 +79,7 @@ Requirement & File & Algorithm / structure \\
 A. Flight registry & \texttt{registry.py} & Universal hashing, linear probing, tombstones, resizing \\
 B. Runway scheduler & \texttt{bst.py} & Unbalanced BST, floor/ceiling, range search \\
 Synchronisation & \texttt{engine.py} & Engine layer + consistency check \\
-C. Crisis scenarios & \todo{file} & Greedy recovery rule \\
+C. Crisis scenarios & \texttt{engine.py} & Greedy recovery rule, conflict search, range search \\
 D. Sorting & \todo{file} & Counting sort, LSD radix sort \\
 E. Disruption analysis & \todo{file} & Divide-and-conquer maximum subarray \\
 F. Route matrix & \todo{file} & Classical and Strassen multiplication \\
@@ -142,7 +142,7 @@ $(i+1) \bmod m$. A slot is either empty, a flight, or a \emph{tombstone}.
   instead of looping forever (resizing prevents this in practice).
 \end{itemize}
 
-\begin{algorithm}[h]
+\begin{algorithm}[ht]
 \caption{Registry insert (matches \texttt{HashRegistry.insert})}
 \begin{algorithmic}[1]
 \Procedure{Insert}{$f$}
@@ -171,7 +171,7 @@ $(i+1) \bmod m$. A slot is either empty, a flight, or a \emph{tombstone}.
 \end{algorithmic}
 \end{algorithm}
 
-\begin{algorithm}[h]
+\begin{algorithm}[ht]
 \caption{Registry lookup and delete (match \texttt{lookup}, \texttt{delete})}
 \begin{algorithmic}[1]
 \Procedure{Lookup}{$\mathit{id}$}
@@ -250,7 +250,7 @@ kinds of flight can overlap it:
   \item flights that start \emph{inside} $[s, e)$, found by range search.
 \end{enumerate}
 
-\begin{algorithm}[h]
+\begin{algorithm}[ht]
 \caption{Conflict check (matches \texttt{RunwayBST.conflicts})}
 \begin{algorithmic}[1]
 \Procedure{Conflicts}{$s, e$}
@@ -322,7 +322,131 @@ through it.
 
 % ------------------------------------------------------------------ remaining
 \section{C. Crisis scenarios}
-\todo{recovery rule, scenarios A/B/C, result tables}
+
+The three scenarios are engine methods
+(\texttt{runway\_closure}, \texttt{emergency\_insert},
+\texttt{mass\_cancel}) built from the BST operations of Section~4. They take
+the runway and times as parameters, so nothing is specific to the official
+file. Each official result below was produced from a fresh load.
+
+\subsection{Recovery rule (runway closure)}
+Affected flights are the flights on the closed runway whose occupancy
+intersects $[c_s, c_e)$, which is exactly \textsc{Conflicts}$(c_s, c_e)$. They
+are processed as follows:
+
+\begin{enumerate}
+  \item \textbf{Remove all affected flights from the tree first.} Otherwise
+  their old slots inside the closed window would block the new slots they are
+  competing for, causing unnecessary delays and breaking the priority order.
+  The only flights left in the tree are unaffected ones, which are never moved.
+  \item \textbf{Order} them by (priority, original start, flight\_id) with an
+  insertion sort on that tuple; the list is small, so $O(k^2)$ is negligible.
+  \item For each flight, try start times $c_e, c_e+5, c_e+10, \dots$ minutes,
+  keeping its duration. The first conflict-free slot is taken (status
+  \texttt{DELAYED}) and the flight is reinserted, so later flights see it. If
+  the delay from its original start would exceed 120 minutes, the flight is
+  \texttt{CANCELLED} instead; it stays out of the tree but remains in the
+  registry.
+\end{enumerate}
+
+\begin{algorithm}[ht]
+\caption{Runway closure (matches \texttt{Engine.runway\_closure})}
+\begin{algorithmic}[1]
+\Procedure{RunwayClosure}{$r, c_s, c_e$}
+  \State $T \gets$ tree of runway $r$; \quad $A \gets$ \textsc{Conflicts}$(c_s, c_e)$ on $T$
+  \For{each $f \in A$} \State delete $f$'s node from $T$ \EndFor
+  \State insertion-sort $A$ by $(f.\mathit{priority}, f.\mathit{origStart}, f.\mathit{id})$
+  \For{each $f \in A$}
+    \State $d \gets f.\mathit{end} - f.\mathit{start}$; \quad $t \gets c_e$
+    \While{$t - f.\mathit{origStart} \le 120$ min}
+      \If{\textsc{Conflicts}$(t, t+d)$ on $T$ is empty}
+        \State $f.\mathit{start} \gets t$; $f.\mathit{end} \gets t+d$; status \texttt{DELAYED};
+        insert $f$ into $T$; \textbf{break}
+      \EndIf
+      \State $t \gets t + 5$ min
+    \EndWhile
+    \If{$f$ was not placed} status \texttt{CANCELLED} \EndIf
+  \EndFor
+  \State \Return rows (ID, old time, new time, status) and totals
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Official results}
+
+\paragraph{Scenario A --- RUNWAY\_CLOSURE R1 09:00--11:00.}
+18 flights are affected. This includes F910078 (08:59--09:04), which starts
+before the closure but is still on the runway at 09:00 and is found by the
+\textsc{Floor} part of the conflict check.
+
+\begin{center}
+\begin{tabular}{@{}lc@{}}
+\toprule
+Affected & 18 \\
+Delayed & 1 (BA10079, 09:06 $\to$ 11:00, 114 min) \\
+Cancelled & 17 \\
+Total delay & 114 min \\
+Consistency check after scenario & passed \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Removing all 18 affected flights frees 08:59--11:03, so the slot 11:00--11:05
+becomes available and goes to the highest-priority, earliest flight. Every
+other affected flight is cancelled because R1 is occupied for 1{,}000 of the
+day's 1{,}440 minutes, with gaps of about 2 minutes between flights after 11:05:
+no 5-minute slot exists within any flight's 120-minute limit. This was
+confirmed independently from the raw CSV.
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Flight & Old start & New start & Status \\
+\midrule
+BA10079 & 09:06 & 11:00 & DELAYED \\
+AA10081 & 09:20 & --- & CANCELLED \\
+DL10082 & 09:27 & --- & CANCELLED \\
+WN10084 & 09:41 & --- & CANCELLED \\
+AS10086 & 09:55 & --- & CANCELLED \\
+DL10092 & 10:37 & --- & CANCELLED \\
+UA10093 & 10:44 & --- & CANCELLED \\
+B610095 & 10:58 & --- & CANCELLED \\
+AC10080 & 09:13 & --- & CANCELLED \\
+B610085 & 09:48 & --- & CANCELLED \\
+BA10089 & 10:16 & --- & CANCELLED \\
+AC10090 & 10:23 & --- & CANCELLED \\
+WN10094 & 10:51 & --- & CANCELLED \\
+F910078 & 08:59 & --- & CANCELLED \\
+UA10083 & 09:34 & --- & CANCELLED \\
+NK10087 & 10:02 & --- & CANCELLED \\
+F910088 & 10:09 & --- & CANCELLED \\
+AA10091 & 10:30 & --- & CANCELLED \\
+\bottomrule
+\end{tabular}
+\end{center}
+Rows are in processing order (priority, then original start, then ID).
+
+\paragraph{Scenario B --- EMERGENCY\_INSERT EM90001, R1, 09:00--09:05, priority 1.}
+The requested slot conflicts with \textbf{F910078} (08:59--09:04). No existing
+flight is moved: the method searches forward from the requested start in
+5-minute steps and offers the earliest conflict-free slot, \textbf{23:20}.
+Without confirmation nothing is inserted; with confirmation (\texttt{ACCEPT})
+EM90001 is inserted at 23:20--23:25 and the consistency check passes. The
+handout gives no limit for this search, so the implementation stops after
+24 hours and reports that no slot exists. The late offer has the same cause
+as above: the first 5-minute gap on R1 after 09:00 opens at 23:18, and the
+first start on the 5-minute grid is 23:20.
+
+\paragraph{Scenario C --- MASS\_CANCEL 14:00--15:00.}
+Range search $[14{:}00, 15{:}00)$ on every runway finds \textbf{45} flights,
+9 per runway, matching a direct count from the CSV. All are removed from the
+trees and kept in the registry as \texttt{CANCELLED}; active flights drop from
+1{,}000 to 955 and the consistency check passes. Range search (start time)
+is used here rather than the conflict check (overlap), because the rule
+cancels flights whose \emph{start} lies in the window: a flight starting at
+13:58 is not cancelled.
+
 
 \section{D. Counting sort, radix sort and the lower bound}
 \todo{}
@@ -358,7 +482,9 @@ BST range search ($k$ results) & $O(h + k)$ & $O(n)$ \\
 BST conflict check & $O(h + k)$ & $O(n)$ \\
 BST inorder / height & $O(n)$ & $O(n)$ \\
 \midrule
-Crisis scenarios & \todo{} & \\
+Runway closure ($k$ affected) & $O(k^2 + k \cdot s \cdot (h + q))$ & $O(k^2 + k\,s\,n)$ \\
+Emergency insert ($s$ tries) & $O(s\,(h+q))$ & $O(s\,n)$ \\
+Mass cancel ($k$ cancelled) & $O(R\,h + k\,h)$ & $O(k\,n)$ \\
 Counting / radix sort & \todo{} & \\
 Maximum subarray & \todo{} & \\
 Classical / Strassen & \todo{} & \\
@@ -366,6 +492,8 @@ FKS perfect hashing & \todo{} & \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+Here $h$ is the tree height, $k$ the number of affected or cancelled flights, $s$ the number of candidate start times tried, $q$ the number of conflicts a single check returns, and $R$ the number of runways.
 
 \section{Limitations}
 \todo{}

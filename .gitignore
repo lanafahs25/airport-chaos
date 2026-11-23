@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 .vscode/
+*.aux
+*.log
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
