@@ -230,6 +230,49 @@ class Engine:
         return cancelled_ids
 
 
+    #Scenario B: Imergency Insert
+    def emergency_insert (self, flight, accept):
+
+        if self.find(flight.flight_id) [0] is not None:
+            return False, "duplicate flight id", [], None
+
+        if flight.runway not in self.runways:
+            self.runways[flight.runway] = RunwayBST()
+
+        tree = self.runways[flight.runway]
+        clashes = tree.conflicts (flight.start, flight.end)
+
+        if len(clashes) == 0:
+            self.add(flight)
+            return True, "inserted at requested time", [], flight.start
+
+        duration = flight.end - flight.start
+        candidate = flight.start + timedelta(minutes = 5)
+        offered = None 
+
+        while candidate - flight.start <= timedelta(hours = 24):
+            if len(tree.conflicts(candidate, candidate + duration)) == 0:
+                offered = candidate 
+                break
+            candidate = candidate + timedelta(minutes = 5)
+
+        if offered is None:
+            return False, "no free slot within 24h", clashes, offered
+
+        if not accept:
+            return False, "conflict, slot offered ", clashes, offered
+
+        flight.start = offered 
+        flight.end = offered + duration 
+        flight.orig_start = flight.start
+        flight.orig_end = flight.end
+        self.add(flight)
+
+        return True , "inserted at offered slot", clashes, offered
+        
+        
+
+
 
 
 
