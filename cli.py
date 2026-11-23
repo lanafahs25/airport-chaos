@@ -1,8 +1,9 @@
-import sys
 import shlex
+import typer
 from datetime import datetime
 from airport.engine import Engine
 from airport.flight import Flight
+from airport.sorting import counting_sort_priority, radix_sort_ids
 
 TIME_FMT = "%Y-%m-%d %H:%M"
 
@@ -43,22 +44,13 @@ def run_command(engine, line):
                 tree = engine.runways[name]
                 print(f"  {name}: {tree.size} active, height {tree.height()}")
 
-        elif cmd == "RUNWAY_CLOSURE":
-            rows, n, d, c, mins = engine.runway_closure(args[0], t(args[1]), t(args[2]))
-            print(f"{'ID':<9}{'OLD':>6}{'NEW':>7}  STATUS")
-            for fid, old, new, st in rows:
-                print(f"{fid:<9}{fmt(old):>6}{fmt(new):>7}  {st}")
-            print(f"affected {n}, delayed {d}, cancelled {c}, total delay {mins} min")
-
         elif cmd == "LIST_RUNWAY":
-            name = args [0]
+            name = args[0]
             if name not in engine.runways:
                 print(f"No runway called {name}")
             else:
                 for f in engine.runways[name].inorder():
                     print(f"{f.flight_id} {fmt(f.start)}-{fmt(f.end)} P{f.priority} {f.status}")
-
-
 
         elif cmd == "CANCEL":
             ok, msg = engine.cancel(args[0])
@@ -82,6 +74,13 @@ def run_command(engine, line):
                     print(f"{name} {fmt(s)}-{fmt(e2)}: conflicts with "
                           + ", ".join(c.flight_id for c in clashes))
 
+        elif cmd == "RUNWAY_CLOSURE":
+            rows, n, d, c, mins = engine.runway_closure(args[0], t(args[1]), t(args[2]))
+            print(f"{'ID':<9}{'OLD':>6}{'NEW':>7}  STATUS")
+            for fid, old, new, st in rows:
+                print(f"{fid:<9}{fmt(old):>6}{fmt(new):>7}  {st}")
+            print(f"affected {n}, delayed {d}, cancelled {c}, total delay {mins} min")
+
         elif cmd == "MASS_CANCEL":
             ids = engine.mass_cancel(t(args[0]), t(args[1]))
             print(f"cancelled {len(ids)} flights: " + ", ".join(ids))
@@ -96,6 +95,8 @@ def run_command(engine, line):
                 if cmd == "ADD":
                     ok, msg, clashes = engine.add(f)
                     print(f"{fid}: {msg}")
+                    if clashes:
+                        print("   conflicts with " + ", ".join(c.flight_id for c in clashes))
                 else:
                     accept = len(args) > 8 and args[8].upper() == "ACCEPT"
                     ok, msg, clashes, slot = engine.emergency_insert(f, accept)
@@ -105,24 +106,47 @@ def run_command(engine, line):
                     if slot is not None:
                         print(f"   slot: {fmt(slot)}" + ("" if ok else "  (add ACCEPT to insert)"))
 
+        elif cmd in ("SORT_PRIORITY", "SORT_ID"):
+            n = int(args[0]) if args else 10
+            flights = engine.registry.all_flights()
+            if cmd == "SORT_PRIORITY":
+                out = counting_sort_priority(flights)
+            else:
+                out = radix_sort_ids(flights)
+            for f in out[:n]:
+                print(f"{f.flight_id}  P{f.priority}  {f.runway} {fmt(f.start)}  {f.status}")
+            print(f"... {len(out)} flights sorted")
+
+        elif cmd == "SORT_DEMO":
+            by_id = radix_sort_ids(engine.registry.all_flights())
+            out = counting_sort_priority(by_id)
+            print("Sorted by ID first, then by priority (stable):")
+            for f in out[:8]:
+                print(f"  P{f.priority}  {f.flight_id}")
+            ok = all(out[i].flight_id < out[i + 1].flight_id
+                     for i in range(len(out) - 1)
+                     if out[i].priority == out[i + 1].priority)
+            print(f"IDs stay in order within each priority: {ok}")
+
         elif cmd == "HELP":
             print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
             print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
             print('ADD id airline origin dest R "start" "end" prio')
             print('EMERGENCY_INSERT id airline origin dest R "start" "end" prio [ACCEPT]')
-            print('RUNWAY_CLOSURE R "start" "end" | MASS_CANCEL "start" "end" | QUIT')
+            print('RUNWAY_CLOSURE R "start" "end" | MASS_CANCEL "start" "end"')
+            print("SORT_PRIORITY [n] | SORT_ID [n] | SORT_DEMO | QUIT")
 
         else:
-            print(f"Unknown command: {cmd}")
+            print(f"Unknown command: {cmd}  (type HELP)")
 
     except IndexError:
-        print(f"{cmd}: missing arguments (see README for syntax)")
+        print(f"{cmd}: missing arguments (type HELP for syntax)")
     except ValueError as e:
         print(f"{cmd}: invalid input ({e})")
 
 
 def menu(engine):
-    print("Airport Chaos: type a command, or QUIT")
+    print("Airport Chaos: type a command, HELP, or QUIT")
     while True:
         line = input("> ").strip()
         if line.upper() in ("QUIT", "EXIT"):
@@ -138,9 +162,28 @@ def batch(engine, path):
                 run_command(engine, line)
 
 
-if __name__ == "__main__":
+app = typer.Typer(help="Airport Chaos: flight scheduling & crisis recovery engine")
+
+
+@app.command("menu")
+def menu_cmd():
+    """Interactive mode: type commands until QUIT."""
+    menu(Engine())
+
+
+@app.command("batch")
+def batch_cmd(path: str):
+    """Run every command in a batch file, one per line."""
+    batch(Engine(), path)
+
+
+@app.command("run")
+def run_cmd(line: str, csv: str = "data/airport_flights.csv"):
+    """Load the CSV, then run a single command."""
     e = Engine()
-    if len(sys.argv) == 3 and sys.argv[1] == "--batch":
-        batch(e, sys.argv[2])
-    else:
-        menu(e)
+    run_command(e, f"LOAD {csv}")
+    run_command(e, line)
+
+
+if __name__ == "__main__":
+    app()
