@@ -3,6 +3,29 @@ from .loader import load_flights
 from .registry import HashRegistry
 from .bst import RunwayBST
 
+
+ 
+#helper function for comparing 3 things at once
+def key (f):
+     return (f.priority, f.orig_start, f.flight_id)
+
+
+#normal insertion sort 
+def sort_affected(flights):
+    for i in range(1, len(flights)):
+
+        current = flights[i]
+        j = i - 1
+
+        while j >= 0 and key(flights[j]) > key(current):
+
+            flights[j + 1] = flights[j]
+            j -= 1
+
+        flights[j + 1] = current
+    return flights
+
+
 class Engine:
     def __init__(self):
         self.registry = HashRegistry()
@@ -149,6 +172,7 @@ class Engine:
 
         return problems
 
+    #scenario A: Runway_Closure
 
     def runway_closure (self, runway, close_start, close_end):
         tree = self.runways [runway]
@@ -194,35 +218,21 @@ class Engine:
 
         return rows, len(affected), delayed, cancelled, total_delay
 
-    
+    #Scenario C: Mass_Cancel
+    def mass_cancel (self, t1, t2):
+        cancelled_ids = []
+        for name, tree in self.runways.items():
+            found = tree.range_search(t1,t2)
+
+            for f in found:
+                self.cancel(f.flight_id)
+                cancelled_ids.append(f.flight_id)
+        return cancelled_ids
 
 
 
 
 
-        
-
-
-
- #helper function for comparing 3 things at once
-def key (f):
-     return (f.priority, f.orig_start, f.flight_id)
-
-
-#normal insertion sort 
-def sort_affected(flights):
-    for i in range(1, len(flights)):
-
-        current = flights[i]
-        j = i - 1
-
-        while j >= 0 and key(flights[j]) > key(current):
-
-            flights[j + 1] = flights[j]
-            j -= 1
-            
-        flights[j + 1] = current
-    return flights
 
 
                 
