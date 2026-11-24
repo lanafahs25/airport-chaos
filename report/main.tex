@@ -499,13 +499,58 @@ Here $h$ is the tree height, $k$ the number of affected or cancelled flights, $s
 \todo{}
 
 \section{AI and tool-use disclosure}
-\todo{Write this yourself. Suggested contents: Claude (Anthropic) was used for
-explanations of the algorithms, debugging help, and design discussion of
-project-specific parts (conflict check, engine synchronisation, tombstone reuse);
-algorithms follow CLRS and the lecture pseudocode; all code was written and tested
-by me. A first draft of this report was generated with Claude from my code and
-measurements, then reviewed and edited by me. The optional GUI was generated with
-\ldots}
+
+I used Claude (Anthropic) as a tutor and assistant throughout the project.
+To be clear about who wrote what, the work is split into three groups.
+
+\paragraph{Algorithms (written by me).}
+I wrote the required algorithms myself, in Python, working from the CLRS and
+lecture pseudocode. I rewrote the pseudocode by hand first and then
+translated it. Claude explained the concepts, answered my questions, gave
+step-by-step walkthroughs and pseudocode for project-specific parts, and
+pointed out bugs in my code, which I then fixed. This covers:
+\begin{itemize}
+  \item \texttt{registry.py}: polynomial encoding, universal hash, linear
+  probing insert/lookup, tombstone delete and tombstone reuse, resize, statistics;
+  \item \texttt{bst.py}: insert, search, inorder, minimum/maximum,
+  successor/predecessor, height, transplant, delete, range search,
+  floor/ceiling and the conflict check;
+  \item \texttt{engine.py}: add, cancel, reschedule with rollback, the
+  consistency check, and the three crisis scenarios (runway closure,
+  emergency insert, mass cancel);
+  \item \texttt{sorting.py}: stable counting sort on priority and
+  character-based LSD radix sort on flight IDs.
+\end{itemize}
+The project-specific designs (the conflict check built from floor and range
+search, removing all affected flights before rescheduling, reusing the first
+tombstone on insert) were discussed with Claude, and I implemented them.
+
+\paragraph{Plumbing (written by Claude).}
+Code that is not one of the required algorithms was written by Claude and
+reviewed, tested and integrated by me:
+\begin{itemize}
+  \item \texttt{flight.py} (the \texttt{Flight} data class) and
+  \texttt{loader.py} (CSV reading and row validation);
+  \item \texttt{cli.py}: the command parser, every command handler, the
+  output formatting, the Typer entry point (\texttt{menu}, \texttt{batch},
+  \texttt{run}) and the scenario batch files;
+  \item small helpers: \texttt{key}/\texttt{sort\_affected} (insertion sort
+  used to order affected flights), \texttt{all\_flights} in the registry, the
+  \texttt{nodes} option of \texttt{inorder}, and the overlap check in
+  \texttt{Engine.load};
+  \item the one-off test commands used during development.
+\end{itemize}
+
+\paragraph{Report.}
+This report was first drafted by Claude from my code and from measurements
+taken by running it, including the independent check of scenario results
+against the raw CSV. I then reviewed and edited it. The optional GUI
+\todo{fill in once built, e.g.\ ``was generated with Claude Code''}.
+
+\paragraph{Other tools.}
+Python standard library (\texttt{csv}, \texttt{datetime}, \texttt{random},
+\texttt{shlex}), Typer for the command-line entry point, and \LaTeX{} for
+this report. No library sorting, map or set replaces any required algorithm.
 
 \section{Contributions}
 Solo project, approved by the instructor. All work by Lana Fahs.
