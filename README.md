@@ -30,6 +30,16 @@ python cli.py --help
 
 In the menu, pick an option by number, or type any command directly.
 
+### Optional GUI
+
+```bash
+python gui/app.py
+```
+
+Tkinter (bundled with Python): runway timelines, the three scenarios, sortable
+flight table, disruption chart, route heatmap (A and A² via Strassen) and
+statistics. It only calls the engine; no algorithm logic lives in the GUI.
+
 ## Commands
 
 Timestamps are written `"YYYY-MM-DD HH:MM"` (quoted, because they contain a space).
@@ -97,6 +107,7 @@ only used for correctness.
 ```
 airport/      flight.py, loader.py, registry.py, bst.py, engine.py,
               sorting.py, analysis.py, matrix.py, perfect_hash.py, trace.py
+gui/          app.py (optional Tkinter GUI)
 cli.py        command parser, numbered menu, batch runner (Typer entry point)
 data/         airport_flights.csv (official file, unchanged)
 scenarios/    official scenario batch files

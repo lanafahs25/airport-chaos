@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage[margin=2.5cm]{geometry}
+\usepackage[margin=2cm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{amsmath}
@@ -65,7 +65,9 @@ into layers, and each layer has one responsibility:
   (\texttt{python cli.py menu | batch FILE | run "COMMAND"}). A \texttt{TRACE}
   switch prints hash probes, BST search paths and neighbours, and sorting
   passes. The CLI only calls engine and algorithm functions; it contains no
-  algorithm logic.
+  algorithm logic. An optional Tkinter GUI (\texttt{gui/app.py}) shows the
+  runway timelines, scenario results, disruption chart and route heatmap on
+  top of the same engine.
 \end{enumerate}
 
 Runways are not hard-coded: the engine creates one tree per runway name found in
@@ -401,34 +403,7 @@ day's 1{,}440 minutes, with gaps of about 2 minutes between flights after 11:05:
 no 5-minute slot exists within any flight's 120-minute limit. This was
 confirmed independently from the raw CSV.
 
-\begin{center}
-\small
-\begin{tabular}{@{}llll@{}}
-\toprule
-Flight & Old start & New start & Status \\
-\midrule
-BA10079 & 09:06 & 11:00 & DELAYED \\
-AA10081 & 09:20 & --- & CANCELLED \\
-DL10082 & 09:27 & --- & CANCELLED \\
-WN10084 & 09:41 & --- & CANCELLED \\
-AS10086 & 09:55 & --- & CANCELLED \\
-DL10092 & 10:37 & --- & CANCELLED \\
-UA10093 & 10:44 & --- & CANCELLED \\
-B610095 & 10:58 & --- & CANCELLED \\
-AC10080 & 09:13 & --- & CANCELLED \\
-B610085 & 09:48 & --- & CANCELLED \\
-BA10089 & 10:16 & --- & CANCELLED \\
-AC10090 & 10:23 & --- & CANCELLED \\
-WN10094 & 10:51 & --- & CANCELLED \\
-F910078 & 08:59 & --- & CANCELLED \\
-UA10083 & 09:34 & --- & CANCELLED \\
-NK10087 & 10:02 & --- & CANCELLED \\
-F910088 & 10:09 & --- & CANCELLED \\
-AA10091 & 10:30 & --- & CANCELLED \\
-\bottomrule
-\end{tabular}
-\end{center}
-Rows are in processing order (priority, then original start, then ID).
+The full per-flight table is in Appendix~\ref{app:scenario}.
 
 \paragraph{Scenario B --- EMERGENCY\_INSERT EM90001, R1, 09:00--09:05, priority 1.}
 The requested slot conflicts with \textbf{F910078} (08:59--09:04). No existing
@@ -597,26 +572,12 @@ reported absent (\texttt{RULES} command).
 \texttt{python -m unittest -v} runs 23 automated tests (\texttt{tests/test\_all.py}),
 all passing:
 
-\begin{center}
-\small
-\begin{tabular}{@{}ll@{}}
-\toprule
-Area & What is checked \\
-\midrule
-Loader & official file loads 1{,}000 rows; duplicate ID and bad rows reported; malformed timestamp raises \\
-Registry & duplicate and missing IDs; collisions, tombstones and resize over 200 keys; tombstone reuse \\
-BST & root deletion with two children; successor/predecessor walks equal inorder; range search \\
-Conflicts & exact boundary (09:20 end vs 09:20 start) does not conflict; overlap listed once \\
-Engine & overlapping rows rejected on load; cross-runway independence; conflicting insert rejected; \\
- & consistency after cancel, reschedule (including rollback) and add \\
-Scenarios & A, B and C each from a fresh load, with exact official results and consistency \\
-Sorting & counting sort sorted and stable; radix sort exact order, mixed ID lengths \\
-Max subarray & CLRS example; D\&C equals $O(n^2)$ on 200 random arrays; all-zero and post-closure \\
-Strassen & equals classical on sizes 1, 2, 3, 5, 7, 8, 13, 16, 33 \\
-Perfect hashing & all 20 present, absent IDs rejected, storage bound \\
-\bottomrule
-\end{tabular}
-\end{center}
+Table~\ref{tab:tests} in Appendix~\ref{app:tests} lists them; they cover:
+loader validation, registry collisions/tombstones/resize, BST root deletion
+and neighbours, the exact boundary case, cross-runway independence, conflict
+rejection, all three scenarios from a fresh load, sorting stability, maximum
+subarray against the $O(n^2)$ reference, Strassen on odd sizes, consistency
+after updates, and perfect hashing.
 
 The scenario tests are regression tests: they fix the official outputs
 (18/1/17 with 114 minutes; F910078 and the 23:20 slot; 45 cancellations) so any
@@ -641,19 +602,7 @@ correctness; scale experiments use generated flights.
 \end{figure}
 
 \subsection{Hash lookups vs load factor}
-Table size fixed at $m = 8192$ (resizing disabled for this experiment only).
-\begin{center}
-\begin{tabular}{@{}rrrrr@{}}
-\toprule
-$\alpha$ & probes (hit) & theory & probes (miss) & theory \\
-\midrule
-0.25 & 1.17 & 1.17 & 1.38 & 1.39 \\
-0.50 & 1.49 & 1.50 & 2.46 & 2.50 \\
-0.70 & 2.09 & 2.17 & 6.65 & 6.06 \\
-0.90 & 5.46 & 5.50 & 42.84 & 50.50 \\
-\bottomrule
-\end{tabular}
-\end{center}
+Table size fixed at $m = 8192$ (resizing disabled for this experiment only); numbers in Table~\ref{tab:bhash}.
 Measurements follow the linear-probing estimates
 $\frac12(1+\frac{1}{1-\alpha})$ (hit) and $\frac12(1+\frac{1}{(1-\alpha)^2})$
 (miss) closely. Unsuccessful searches grow fastest: about 43 probes at
@@ -661,18 +610,7 @@ $\alpha = 0.9$ against 2.5 at $\alpha = 0.5$. This is the reason the registry
 resizes at $\alpha = 0.6$. Time per lookup stays around 1--2\,$\mu$s.
 
 \subsection{BST: sorted vs shuffled insertion}
-\begin{center}
-\begin{tabular}{@{}rrrrrr@{}}
-\toprule
-$n$ & height (shuffled) & height (sorted) & insert ms (sh.\ / so.) & search all ms (sh.\ / so.) \\
-\midrule
-500 & 17 & 500 & 0.16 / 2.55 & 3.6 / 91 \\
-1000 & 22 & 1000 & 0.44 / 10.1 & 8.4 / 365 \\
-2000 & 23 & 2000 & 0.92 / 41.7 & 20.1 / 1{,}493 \\
-4000 & 26 & 4000 & 2.1 / 163 & 43.0 / 6{,}294 \\
-\bottomrule
-\end{tabular}
-\end{center}
+(Table~\ref{tab:bbst}.)
 Shuffled input gives heights close to $2\log_2 n$ and near-linear growth of the
 total time. Sorted input produces a chain of height $n$: every operation is
 $O(n)$, so building and searching all keys become $O(n^2)$, and doubling $n$
@@ -680,18 +618,7 @@ multiplies the time by about 4. At $n = 4000$, searching every key is about
 $146\times$ slower than on the shuffled tree.
 
 \subsection{Counting and radix sort vs merge sort}
-\begin{center}
-\begin{tabular}{@{}rrrrr@{}}
-\toprule
-$n$ & counting & merge (priority) & radix (ID) & merge (ID) \\
-\midrule
-1{,}000 & 0.04 & 0.67 & 0.73 & 0.79 \\
-10{,}000 & 0.45 & 8.66 & 7.46 & 10.61 \\
-50{,}000 & 2.30 & 51.5 & 47.3 & 68.2 \\
-100{,}000 & 5.21 & 111.9 & 132.2 & 152.8 \\
-\bottomrule
-\end{tabular}
-\end{center}
+(Table~\ref{tab:bsort}.)
 Times in ms. Counting sort ($k = 3$) is about $20\times$ faster than merge sort
 and grows linearly. Radix sort is faster than merge sort on the same IDs at
 every size, but only by 10--30\%: it makes $d = 7$ passes, each scanning a
@@ -699,19 +626,7 @@ count array of size $k = 128$, so its constant factor is large, while
 $\log_2 n$ at these sizes is only 10--17.
 
 \subsection{Classical vs Strassen}
-\begin{center}
-\begin{tabular}{@{}rrrr@{}}
-\toprule
-$N$ & classical & Strassen (cutoff 32) & Strassen (cutoff 1) \\
-\midrule
-16 & 0.13 & 0.14 & 2.17 \\
-32 & 0.97 & 1.03 & 14.97 \\
-64 & 7.35 & 7.83 & 108.9 \\
-128 & 60.2 & 59.9 & --- \\
-256 & 485.7 & 466.9 & --- \\
-\bottomrule
-\end{tabular}
-\end{center}
+(Table~\ref{tab:bmat}.)
 Times in ms. Both grow by roughly $8\times$ per doubling at these sizes.
 Strassen with cutoff 32 only breaks even at $N = 128$ and is about 4\% faster
 at $N = 256$. Recursing all the way down (cutoff 1) is 15--17$\times$ slower,
@@ -834,8 +749,10 @@ reviewed, tested and integrated by me:
 \paragraph{Report.}
 This report was first drafted by Claude from my code and from measurements
 taken by running it, including the independent check of scenario results
-against the raw CSV. I then reviewed and edited it. The optional GUI
-\todo{fill in once built, e.g.\ ``was generated with Claude Code''}.
+against the raw CSV. I then reviewed and edited it. The optional GUI (\texttt{gui/app.py},
+Tkinter) was written entirely by Claude for presentation; it contains no
+algorithm logic and only calls the same engine and algorithm functions as
+the command-line interface.
 
 \paragraph{Other tools.}
 Python standard library (\texttt{csv}, \texttt{datetime}, \texttt{random},
@@ -844,5 +761,116 @@ this report. No library sorting, map or set replaces any required algorithm.
 
 \section{Contributions}
 Solo project, approved by the instructor. All work by Lana Fahs.
+
+
+\clearpage
+\appendix
+\section{Scenario A: per-flight results}\label{app:scenario}
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Flight & Old start & New start & Status \\
+\midrule
+BA10079 & 09:06 & 11:00 & DELAYED \\
+AA10081 & 09:20 & --- & CANCELLED \\
+DL10082 & 09:27 & --- & CANCELLED \\
+WN10084 & 09:41 & --- & CANCELLED \\
+AS10086 & 09:55 & --- & CANCELLED \\
+DL10092 & 10:37 & --- & CANCELLED \\
+UA10093 & 10:44 & --- & CANCELLED \\
+B610095 & 10:58 & --- & CANCELLED \\
+AC10080 & 09:13 & --- & CANCELLED \\
+B610085 & 09:48 & --- & CANCELLED \\
+BA10089 & 10:16 & --- & CANCELLED \\
+AC10090 & 10:23 & --- & CANCELLED \\
+WN10094 & 10:51 & --- & CANCELLED \\
+F910078 & 08:59 & --- & CANCELLED \\
+UA10083 & 09:34 & --- & CANCELLED \\
+NK10087 & 10:02 & --- & CANCELLED \\
+F910088 & 10:09 & --- & CANCELLED \\
+AA10091 & 10:30 & --- & CANCELLED \\
+\bottomrule
+\end{tabular}
+\end{center}
+Rows are in processing order (priority, then original start, then ID).
+
+\section{Automated tests}\label{app:tests}
+\begin{table}[ht]\centering
+\caption{Automated test suite (\texttt{tests/test\_all.py}), all 23 passing.}\label{tab:tests}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Area & What is checked \\
+\midrule
+Loader & official file loads 1{,}000 rows; duplicate ID and bad rows reported; malformed timestamp raises \\
+Registry & duplicate and missing IDs; collisions, tombstones and resize over 200 keys; tombstone reuse \\
+BST & root deletion with two children; successor/predecessor walks equal inorder; range search \\
+Conflicts & exact boundary (09:20 end vs 09:20 start) does not conflict; overlap listed once \\
+Engine & overlapping rows rejected on load; cross-runway independence; conflicting insert rejected; \\
+ & consistency after cancel, reschedule (including rollback) and add \\
+Scenarios & A, B and C each from a fresh load, with exact official results and consistency \\
+Sorting & counting sort sorted and stable; radix sort exact order, mixed ID lengths \\
+Max subarray & CLRS example; D\&C equals $O(n^2)$ on 200 random arrays; all-zero and post-closure \\
+Strassen & equals classical on sizes 1, 2, 3, 5, 7, 8, 13, 16, 33 \\
+Perfect hashing & all 20 present, absent IDs rejected, storage bound \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Benchmark tables}\label{app:bench}
+\begin{table}[ht]\centering
+\caption{Hash lookups vs load factor ($m = 8192$).}\label{tab:bhash}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+$\alpha$ & probes (hit) & theory & probes (miss) & theory \\
+\midrule
+0.25 & 1.17 & 1.17 & 1.38 & 1.39 \\
+0.50 & 1.49 & 1.50 & 2.46 & 2.50 \\
+0.70 & 2.09 & 2.17 & 6.65 & 6.06 \\
+0.90 & 5.46 & 5.50 & 42.84 & 50.50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{table}[ht]\centering
+\caption{BST: sorted vs shuffled insertion.}\label{tab:bbst}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+$n$ & height (shuffled) & height (sorted) & insert ms (sh.\ / so.) & search all ms (sh.\ / so.) \\
+\midrule
+500 & 17 & 500 & 0.16 / 2.55 & 3.6 / 91 \\
+1000 & 22 & 1000 & 0.44 / 10.1 & 8.4 / 365 \\
+2000 & 23 & 2000 & 0.92 / 41.7 & 20.1 / 1{,}493 \\
+4000 & 26 & 4000 & 2.1 / 163 & 43.0 / 6{,}294 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{table}[ht]\centering
+\caption{Sorting times (ms).}\label{tab:bsort}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+$n$ & counting & merge (priority) & radix (ID) & merge (ID) \\
+\midrule
+1{,}000 & 0.04 & 0.67 & 0.73 & 0.79 \\
+10{,}000 & 0.45 & 8.66 & 7.46 & 10.61 \\
+50{,}000 & 2.30 & 51.5 & 47.3 & 68.2 \\
+100{,}000 & 5.21 & 111.9 & 132.2 & 152.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{table}[ht]\centering
+\caption{Matrix multiplication times (ms).}\label{tab:bmat}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+$N$ & classical & Strassen (cutoff 32) & Strassen (cutoff 1) \\
+\midrule
+16 & 0.13 & 0.14 & 2.17 \\
+32 & 0.97 & 1.03 & 14.97 \\
+64 & 7.35 & 7.83 & 108.9 \\
+128 & 60.2 & 59.9 & --- \\
+256 & 485.7 & 466.9 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \end{document}
