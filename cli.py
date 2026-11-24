@@ -1,6 +1,7 @@
 import shlex
 import typer
 from datetime import datetime
+from airport import trace
 from airport.engine import Engine
 from airport.flight import Flight
 from airport.sorting import counting_sort_priority, radix_sort_ids
@@ -169,13 +170,21 @@ def run_command(engine, line):
                 print(f"  rule {k}: {'present' if ph.contains(int(k)) else 'absent'}")
 
 
+        elif cmd == "TRACE":
+            if len(args) == 0 or args[0].upper() not in ("ON", "OFF"):
+                print("TRACE: use TRACE ON or TRACE OFF")
+            else:
+                trace.ENABLED = args[0].upper() == "ON"
+                print(f"TRACE {'on' if trace.ENABLED else 'off'}")
+
         elif cmd == "HELP":
             print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
             print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
             print('ADD id airline origin dest R "start" "end" prio')
             print('EMERGENCY_INSERT id airline origin dest R "start" "end" prio [ACCEPT]')
             print('RUNWAY_CLOSURE R "start" "end" | MASS_CANCEL "start" "end"')
-            print("SORT_PRIORITY [n] | SORT_ID [n] | SORT_DEMO | ANALYZE | QUIT")
+            print("SORT_PRIORITY [n] | SORT_ID [n] | SORT_DEMO | ANALYZE | MATRIX | RULES [id ...]")
+            print("TRACE ON|OFF | QUIT")
 
         else:
             print(f"Unknown command: {cmd}  (type HELP)")
@@ -186,13 +195,60 @@ def run_command(engine, line):
         print(f"{cmd}: invalid input ({e})")
 
 
+MENU = [
+    ("Load CSV",                     "LOAD",             ["CSV path [data/airport_flights.csv]"]),
+    ("Statistics",                   "STATS",            []),
+    ("Find flight",                  "FIND",             ["flight ID"]),
+    ("List runway",                  "LIST_RUNWAY",      ["runway"]),
+    ("Add flight",                   "ADD",              ["flight ID", "airline", "origin", "destination", "runway",
+                                                          "start (YYYY-MM-DD HH:MM)", "end (YYYY-MM-DD HH:MM)", "priority"]),
+    ("Cancel flight",                "CANCEL",           ["flight ID"]),
+    ("Reschedule flight",            "RESCHEDULE",       ["flight ID", "new start (YYYY-MM-DD HH:MM)"]),
+    ("Check conflict",               "CHECK_CONFLICT",   ["runway", "start (YYYY-MM-DD HH:MM)", "end (YYYY-MM-DD HH:MM)"]),
+    ("Runway closure",               "RUNWAY_CLOSURE",   ["runway", "closure start", "closure end"]),
+    ("Emergency insert",             "EMERGENCY_INSERT", ["flight ID", "airline", "origin", "destination", "runway",
+                                                          "start (YYYY-MM-DD HH:MM)", "end (YYYY-MM-DD HH:MM)", "priority",
+                                                          "type ACCEPT to insert, or leave empty"]),
+    ("Mass cancel",                  "MASS_CANCEL",      ["start", "end"]),
+    ("Sort by priority",             "SORT_PRIORITY",    ["how many to show [10]"]),
+    ("Sort by flight ID",            "SORT_ID",          ["how many to show [10]"]),
+    ("Sorting stability demo",       "SORT_DEMO",        []),
+    ("Disruption analysis",          "ANALYZE",          []),
+    ("Route matrix (Strassen)",      "MATRIX",           []),
+    ("Rule IDs (perfect hashing)",   "RULES",            ["rule IDs separated by spaces"]),
+    ("Toggle TRACE",                 "TRACE",            ["ON or OFF"]),
+]
+
+
+def show_menu():
+    print("\n=== Airport Chaos ===")
+    for number, (label, _, _) in enumerate(MENU, start=1):
+        print(f"{number:>2}. {label}")
+    print(" 0. Quit   (or type any command directly, e.g. FIND B610505)")
+
+
 def menu(engine):
-    print("Airport Chaos: type a command, HELP, or QUIT")
     while True:
-        line = input("> ").strip()
-        if line.upper() in ("QUIT", "EXIT"):
+        show_menu()
+        choice = input("> ").strip()
+        if choice.upper() in ("0", "QUIT", "EXIT"):
             break
-        run_command(engine, line)
+        if not choice.isdigit():
+            run_command(engine, choice)            # typed command
+            continue
+        number = int(choice)
+        if not 1 <= number <= len(MENU):
+            print("Please pick a number from the menu.")
+            continue
+        label, cmd, prompts = MENU[number - 1]
+        parts = [cmd]
+        for prompt in prompts:
+            value = input(f"  {prompt}: ").strip()
+            if value == "" and "[" in prompt:      # default shown in [brackets]
+                value = prompt[prompt.index("[") + 1:prompt.index("]")]
+            if value:
+                parts.extend(value.split() if cmd == "RULES" else [value])
+        run_command(engine, shlex.join(parts))
 
 
 def batch(engine, path):
@@ -208,7 +264,7 @@ app = typer.Typer(help="Airport Chaos: flight scheduling & crisis recovery engin
 
 @app.command("menu")
 def menu_cmd():
-    """Interactive mode: type commands until QUIT."""
+    """Interactive numbered menu (you can also type commands directly)."""
     menu(Engine())
 
 

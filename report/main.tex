@@ -28,9 +28,7 @@
 \vspace{0.3cm}
 {\large Instructor: Dr.\ Mohamed Watfa\par}
 \vspace{1.5cm}
-{\large Lana Fahs \quad ID: \todo{fill in}\par}
-\vspace{0.3cm}
-{\large Solo project (approved by the instructor)\par}
+{\large Lana Fahs \quad ID: 202501399\par}
 \vspace{1.5cm}
 {\large Submission date: December 1, 2026\par}
 \vspace{0.8cm}
@@ -61,8 +59,13 @@ into layers, and each layer has one responsibility:
   modify the registry and the trees. Every operation (load, add, cancel,
   reschedule) goes through it, which is how the two structures are kept
   synchronised.
-  \item \textbf{Interface}: the CLI menu and batch runner \todo{CLI}, and an
-  optional GUI \todo{GUI}. Both call engine methods only.
+  \item \textbf{Interface} (\texttt{cli.py}): an interactive numbered menu, a
+  batch runner for command files, and a single-command mode, all built on one
+  command parser and exposed through a Typer entry point
+  (\texttt{python cli.py menu | batch FILE | run "COMMAND"}). A \texttt{TRACE}
+  switch prints hash probes, BST search paths and neighbours, and sorting
+  passes. The CLI only calls engine and algorithm functions; it contains no
+  algorithm logic.
 \end{enumerate}
 
 Runways are not hard-coded: the engine creates one tree per runway name found in
@@ -80,10 +83,10 @@ A. Flight registry & \texttt{registry.py} & Universal hashing, linear probing, t
 B. Runway scheduler & \texttt{bst.py} & Unbalanced BST, floor/ceiling, range search \\
 Synchronisation & \texttt{engine.py} & Engine layer + consistency check \\
 C. Crisis scenarios & \texttt{engine.py} & Greedy recovery rule, conflict search, range search \\
-D. Sorting & \todo{file} & Counting sort, LSD radix sort \\
-E. Disruption analysis & \todo{file} & Divide-and-conquer maximum subarray \\
-F. Route matrix & \todo{file} & Classical and Strassen multiplication \\
-G. Rule IDs & \todo{file} & FKS two-level perfect hashing \\
+D. Sorting & \texttt{sorting.py} & Counting sort, LSD radix sort \\
+E. Disruption analysis & \texttt{analysis.py} & Divide-and-conquer maximum subarray \\
+F. Route matrix & \texttt{matrix.py} & Classical and Strassen multiplication \\
+G. Rule IDs & \texttt{perfect\_hash.py} & FKS two-level perfect hashing \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -287,7 +290,7 @@ Height  & 16 & 15 & 14 & 16 & 14 \\
 
 Reinserting the R1 flights in sorted time order produces a tree of height
 \textbf{200}, the $O(n)$ worst case of an unbalanced BST.
-\todo{full sorted-vs-shuffled timing benchmark}
+Timings for sorted versus shuffled insertion (up to $146\times$ slower searches) are in Section~\ref{sec:bench}.
 
 % ------------------------------------------------------------------ engine
 \section{Engine and consistency}
@@ -449,24 +452,274 @@ cancels flights whose \emph{start} lies in the window: a flight starting at
 
 
 \section{D. Counting sort, radix sort and the lower bound}
-\todo{}
+
+\subsection{Counting sort on priority}
+Priorities take only $k = 3$ values, so the flights are sorted without
+comparing them: count how many flights have each priority, turn the counts
+into running totals (so \texttt{count[p]} is the position just after the last
+slot of group $p$), then place each flight directly into its group. The input
+is scanned \emph{from the back} and each group is filled from its last slot,
+so flights with equal priority keep their input order: the sort is
+\textbf{stable}. Cost $\Theta(n + k)$.
+
+\subsection{LSD radix sort on flight IDs}
+IDs are sorted character by character, from the \emph{last} position to the
+first, with a stable counting sort at each position (CLRS \S8.3). Each
+character is mapped to \texttt{ord(c)+1} ($1..128$, $k = 128$); a position past
+the end of a shorter ID maps to $0$, so a prefix sorts first (\texttt{"AB"}
+$<$ \texttt{"ABC"}) and the result is exact lexicographic order of the
+original strings, with no numeric encoding and therefore no collisions. With
+$d$ the longest ID length the cost is $\Theta(d(n + k))$; for the official
+file $d = 7$.
+
+\subsection{Stability example}
+\texttt{SORT\_DEMO} sorts all 1{,}000 flights by ID with radix sort and then by
+priority with counting sort. Because counting sort is stable, flights inside
+each priority group remain in ID order; the program checks this over the whole
+list and reports \texttt{True}. The automated tests also check stability
+against the original input positions.
+
+\subsection{Lower bound for comparison sorting}
+Any comparison sort can be modelled as a binary decision tree whose internal
+nodes are comparisons $a_i \le a_j$ and whose leaves are output orders. A
+correct sort must be able to produce all $n!$ orders, so the tree has at least
+$n!$ leaves and its height is at least $\log_2(n!) = \Omega(n \log n)$
+(Stirling). The height is the worst-case number of comparisons, so every
+comparison sort needs $\Omega(n \log n)$ comparisons in the worst case.
+Counting and radix sort are outside this model: they never compare two keys,
+they use key values as array indices. Their cost depends on the key range $k$
+and the number of digits $d$, giving $\Theta(n + k)$ and $\Theta(d(n+k))$,
+which is linear when $k$ and $d$ are small, as here.
 
 \section{E. Divide-and-conquer disruption analysis}
-\todo{}
+
+\paragraph{Load array.}
+The simulation date is taken from the data (the date of the earliest original
+start), and divided into 288 five-minute buckets. Bucket $i$ counts the flights
+whose \emph{original} start (\texttt{orig\_start}) falls in
+$[\,5i, 5i+5)$ minutes after midnight and whose current status is
+\texttt{DELAYED} or \texttt{CANCELLED}. Using the original start means a delayed
+flight is counted where the disruption happened, not where it moved to.
+
+\paragraph{Algorithm.}
+CLRS \textsc{Find-Maximum-Subarray}: split at the middle; the best range lies
+entirely in the left half, entirely in the right half (both solved
+recursively), or crosses the middle. The crossing case is the best sum ending
+at \textit{mid} plus the best sum starting at $\textit{mid}+1$, found by two
+linear scans outward. The result is the largest of the three. The recurrence is
+\[
+T(n) = 2\,T(n/2) + \Theta(n) \;\Rightarrow\; T(n) = \Theta(n \log n)
+\]
+by case 2 of the Master theorem. Recursion depth is only $\lceil\log_2 288\rceil = 9$.
+An $O(n^2)$ reference tries every start and end with a running total.
+
+\paragraph{Ties and the all-zero array.}
+Several ranges can share the maximum sum (for example by including zero
+buckets at an edge), so both results are normalised the same way: zero buckets
+are trimmed from both ends. If the maximum sum is $0$ (no disrupted flight),
+the program reports that there is nothing to analyse.
+
+\paragraph{Results.}
+After a fresh load the array is all zero and \texttt{ANALYZE} reports no
+disruption. After scenario A, the maximum range is buckets
+\textbf{107--131} (08:55--11:00) with \textbf{18} disrupted flights, and the
+$O(n^2)$ reference agrees. Because loads are counts and never negative, the
+maximum range always runs from the first to the last disrupted bucket; the
+algorithm is still the general one, and it is verified on the CLRS example
+(which has negative values, answer indices 7--10, sum 43) and on 200 random
+arrays against the reference.
 
 \section{F. Classical and Strassen multiplication}
-\todo{}
+
+\paragraph{Route matrix.}
+The 14 airports of the official file, in lexicographic order
+(ATL, BOS, CLT, DEN, DFW, IAD, JFK, LAS, LAX, MIA, ORD, PHX, SEA, SFO), index
+the rows and columns of $A$, where $A_{ij}$ is the number of flights from $i$
+to $j$ in the original schedule (all 1{,}000 flights). Then
+$(A^2)_{ij} = \sum_k A_{ik}A_{kj}$ counts two-leg combinations $i \to k \to j$.
+It ignores times, so it is a route-count proxy, not a count of feasible
+connections. The largest entry is \textbf{ORD $\to$ LAS with 600
+combinations}, which was confirmed independently from the raw CSV.
+
+\paragraph{Classical.} The triple loop, $\Theta(N^3)$.
+
+\paragraph{Strassen.}
+Each matrix is split into four quarters and the product is assembled from
+seven half-size products instead of eight (CLRS \S4.2), at the cost of
+$\Theta(N^2)$ extra additions:
+\[
+T(N) = 7\,T(N/2) + \Theta(N^2) \;\Rightarrow\; T(N) = \Theta(N^{\log_2 7}) \approx \Theta(N^{2.81}).
+\]
+Matrices are zero-padded up to the next power of two (14 $\to$ 16), multiplied,
+and cropped back; the padding only produces zeros outside the original
+block. Below a documented \textbf{cutoff of 32} the recursion switches to the
+classical algorithm. Correctness is tested with \texttt{cutoff=1} (full
+recursion) on random matrices of sizes 1, 2, 3, 5, 7, 8, 13, 16 and 33 and on
+the route matrix; all match the classical result exactly.
+
+\paragraph{Why Strassen can lose for small $N$.}
+Each level allocates and adds many temporary matrices, and Python's
+per-operation overhead is large, so the saved multiplication only pays off
+once blocks are big. With the cutoff, the 16$\times$16 route matrix never
+recurses at all. The measured crossover is discussed in
+Section~\ref{sec:bench}.
 
 \section{G. Static perfect hashing}
-\todo{}
+
+The 20 fixed rule IDs
+(101, 107, \ldots, 283) are stored with two-level FKS hashing (CLRS \S11.5).
+Both levels use the universal family $h(k) = ((ak+b) \bmod p) \bmod m$ with
+$p = 293$, a prime larger than every key, and $a, b$ drawn from a seeded
+generator.
+
+\begin{itemize}
+  \item \textbf{Level 1}: hash the $n = 20$ keys into $m = 20$ buckets.
+  Parameters are re-chosen until $\sum s_j^2 \le 4n$, where $s_j$ is the bucket
+  size; this keeps total storage $O(n)$ and succeeds with probability at least
+  $1/2$ per try.
+  \item \textbf{Level 2}: a bucket with $s$ keys gets its own table of size
+  $s^2$ and its own $(a,b)$, re-chosen until there are no collisions
+  (probability at least $1/2$ per try).
+  \item \textbf{Lookup}: two hash computations and one key comparison, so
+  $O(1)$ in the \emph{worst} case. Comparing the stored key rejects absent IDs
+  that hash to an occupied slot.
+\end{itemize}
+
+\paragraph{Results.}
+Bucket sizes: three buckets of 2, two of 3, eight of 1 and seven empty.
+Storage is \textbf{58 slots} (20 for level 1 plus $\sum s_j^2 = 38$), within
+the $20 + 4n = 100$ bound. Level 1 succeeded on the first try; level 2 needed
+2 re-draws in total. All 20 IDs are found; 100, 102, 284 and 999 are correctly
+reported absent (\texttt{RULES} command).
 
 \section{Testing}
-\todo{list of automated tests and results}
 
-\section{Benchmarks}
-\todo{environment, sizes, repeats, plots, interpretation}
+\texttt{python -m unittest -v} runs 23 automated tests (\texttt{tests/test\_all.py}),
+all passing:
 
-% ------------------------------------------------------------------ complexity
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+Area & What is checked \\
+\midrule
+Loader & official file loads 1{,}000 rows; duplicate ID and bad rows reported; malformed timestamp raises \\
+Registry & duplicate and missing IDs; collisions, tombstones and resize over 200 keys; tombstone reuse \\
+BST & root deletion with two children; successor/predecessor walks equal inorder; range search \\
+Conflicts & exact boundary (09:20 end vs 09:20 start) does not conflict; overlap listed once \\
+Engine & overlapping rows rejected on load; cross-runway independence; conflicting insert rejected; \\
+ & consistency after cancel, reschedule (including rollback) and add \\
+Scenarios & A, B and C each from a fresh load, with exact official results and consistency \\
+Sorting & counting sort sorted and stable; radix sort exact order, mixed ID lengths \\
+Max subarray & CLRS example; D\&C equals $O(n^2)$ on 200 random arrays; all-zero and post-closure \\
+Strassen & equals classical on sizes 1, 2, 3, 5, 7, 8, 13, 16, 33 \\
+Perfect hashing & all 20 present, absent IDs rejected, storage bound \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The scenario tests are regression tests: they fix the official outputs
+(18/1/17 with 114 minutes; F910078 and the 23:20 slot; 45 cancellations) so any
+change that alters them fails. The program itself never hard-codes these
+results.
+
+\section{Benchmarks}\label{sec:bench}
+
+\texttt{python benchmarks/run\_benchmarks.py} runs four experiments on
+synthetic data with fixed seeds and writes \texttt{benchmarks/results/*.csv}
+and \texttt{benchmarks/plots/*.png}. \textbf{Environment:} CPython 3.13.5 on
+macOS 27 (Apple Silicon, arm64). Each timing is the median of 5 repeats
+(1 repeat for the $256\times256$ matrices). The official CSV is used only for
+correctness; scale experiments use generated flights.
+
+\begin{figure}[ht]\centering
+\includegraphics[width=0.49\textwidth]{../benchmarks/plots/hash_load_factor.png}
+\includegraphics[width=0.49\textwidth]{../benchmarks/plots/bst_sorted_vs_shuffled.png}\\[4pt]
+\includegraphics[width=0.49\textwidth]{../benchmarks/plots/sorting.png}
+\includegraphics[width=0.49\textwidth]{../benchmarks/plots/matrix.png}
+\caption{Benchmark results (data in \texttt{benchmarks/results/}).}
+\end{figure}
+
+\subsection{Hash lookups vs load factor}
+Table size fixed at $m = 8192$ (resizing disabled for this experiment only).
+\begin{center}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+$\alpha$ & probes (hit) & theory & probes (miss) & theory \\
+\midrule
+0.25 & 1.17 & 1.17 & 1.38 & 1.39 \\
+0.50 & 1.49 & 1.50 & 2.46 & 2.50 \\
+0.70 & 2.09 & 2.17 & 6.65 & 6.06 \\
+0.90 & 5.46 & 5.50 & 42.84 & 50.50 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Measurements follow the linear-probing estimates
+$\frac12(1+\frac{1}{1-\alpha})$ (hit) and $\frac12(1+\frac{1}{(1-\alpha)^2})$
+(miss) closely. Unsuccessful searches grow fastest: about 43 probes at
+$\alpha = 0.9$ against 2.5 at $\alpha = 0.5$. This is the reason the registry
+resizes at $\alpha = 0.6$. Time per lookup stays around 1--2\,$\mu$s.
+
+\subsection{BST: sorted vs shuffled insertion}
+\begin{center}
+\begin{tabular}{@{}rrrrrr@{}}
+\toprule
+$n$ & height (shuffled) & height (sorted) & insert ms (sh.\ / so.) & search all ms (sh.\ / so.) \\
+\midrule
+500 & 17 & 500 & 0.16 / 2.55 & 3.6 / 91 \\
+1000 & 22 & 1000 & 0.44 / 10.1 & 8.4 / 365 \\
+2000 & 23 & 2000 & 0.92 / 41.7 & 20.1 / 1{,}493 \\
+4000 & 26 & 4000 & 2.1 / 163 & 43.0 / 6{,}294 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Shuffled input gives heights close to $2\log_2 n$ and near-linear growth of the
+total time. Sorted input produces a chain of height $n$: every operation is
+$O(n)$, so building and searching all keys become $O(n^2)$, and doubling $n$
+multiplies the time by about 4. At $n = 4000$, searching every key is about
+$146\times$ slower than on the shuffled tree.
+
+\subsection{Counting and radix sort vs merge sort}
+\begin{center}
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+$n$ & counting & merge (priority) & radix (ID) & merge (ID) \\
+\midrule
+1{,}000 & 0.04 & 0.67 & 0.73 & 0.79 \\
+10{,}000 & 0.45 & 8.66 & 7.46 & 10.61 \\
+50{,}000 & 2.30 & 51.5 & 47.3 & 68.2 \\
+100{,}000 & 5.21 & 111.9 & 132.2 & 152.8 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Times in ms. Counting sort ($k = 3$) is about $20\times$ faster than merge sort
+and grows linearly. Radix sort is faster than merge sort on the same IDs at
+every size, but only by 10--30\%: it makes $d = 7$ passes, each scanning a
+count array of size $k = 128$, so its constant factor is large, while
+$\log_2 n$ at these sizes is only 10--17.
+
+\subsection{Classical vs Strassen}
+\begin{center}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+$N$ & classical & Strassen (cutoff 32) & Strassen (cutoff 1) \\
+\midrule
+16 & 0.13 & 0.14 & 2.17 \\
+32 & 0.97 & 1.03 & 14.97 \\
+64 & 7.35 & 7.83 & 108.9 \\
+128 & 60.2 & 59.9 & --- \\
+256 & 485.7 & 466.9 & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+Times in ms. Both grow by roughly $8\times$ per doubling at these sizes.
+Strassen with cutoff 32 only breaks even at $N = 128$ and is about 4\% faster
+at $N = 256$. Recursing all the way down (cutoff 1) is 15--17$\times$ slower,
+because every level allocates and adds temporary matrices in Python, which
+costs more than the multiplication it saves. The asymptotic advantage
+($N^{2.81}$ vs $N^3$) needs much larger matrices, or a lower-overhead
+language, to show.
+
 \section{Complexity summary}
 
 \begin{center}
@@ -485,10 +738,11 @@ BST inorder / height & $O(n)$ & $O(n)$ \\
 Runway closure ($k$ affected) & $O(k^2 + k \cdot s \cdot (h + q))$ & $O(k^2 + k\,s\,n)$ \\
 Emergency insert ($s$ tries) & $O(s\,(h+q))$ & $O(s\,n)$ \\
 Mass cancel ($k$ cancelled) & $O(R\,h + k\,h)$ & $O(k\,n)$ \\
-Counting / radix sort & \todo{} & \\
-Maximum subarray & \todo{} & \\
-Classical / Strassen & \todo{} & \\
-FKS perfect hashing & \todo{} & \\
+Counting sort ($k$ key values) & $\Theta(n+k)$ & $\Theta(n+k)$ \\
+LSD radix sort ($d$ characters, $k=128$) & $\Theta(d(n+k))$ & $\Theta(d(n+k))$ \\
+Maximum subarray, D\&C / reference & $\Theta(n\log n)$ / $\Theta(n^2)$ & same \\
+Classical / Strassen & $\Theta(N^3)$ / $\Theta(N^{2.81})$ & same \\
+FKS lookup / build / storage & $O(1)$ / $O(n)$ expected / $O(n)$ & $O(1)$ lookup \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -496,7 +750,24 @@ FKS perfect hashing & \todo{} & \\
 Here $h$ is the tree height, $k$ the number of affected or cancelled flights, $s$ the number of candidate start times tried, $q$ the number of conflicts a single check returns, and $R$ the number of runways.
 
 \section{Limitations}
-\todo{}
+\begin{itemize}
+  \item The recovery rule is a greedy teaching heuristic, not an optimal
+  schedule. On the official data R1 is busy for 1{,}000 of 1{,}440 minutes with
+  gaps of about 2 minutes, so scenario A cancels 17 of 18 flights and
+  scenario B can only offer 23:20.
+  \item The BSTs are unbalanced: sorted input degrades them to $O(n)$ per
+  operation (height 200 for R1 in sorted order). A balanced tree would fix this.
+  \item Linear probing suffers from primary clustering at high load factors;
+  the 0.6 resize threshold keeps it in check. The collision counter also
+  includes collisions during resizes.
+  \item Radix sort assumes ASCII IDs ($k = 128$); other characters would need
+  a larger key range.
+  \item The emergency-insert search stops after 24 hours, a limit chosen here
+  because the handout gives none.
+  \item The route matrix counts combinations and ignores timing.
+  \item All timings are for pure Python; constant factors dominate at small
+  sizes, which is why Strassen only helps for large matrices, if at all.
+\end{itemize}
 
 \section{AI and tool-use disclosure}
 
@@ -519,7 +790,20 @@ pointed out bugs in my code, which I then fixed. This covers:
   consistency check, and the three crisis scenarios (runway closure,
   emergency insert, mass cancel);
   \item \texttt{sorting.py}: stable counting sort on priority and
-  character-based LSD radix sort on flight IDs.
+  character-based LSD radix sort on flight IDs;
+  \item \texttt{analysis.py}: building the five-minute load array.
+\end{itemize}
+
+\paragraph{Algorithms written by Claude.}
+Because of time pressure, these required algorithms were written by Claude,
+then read, run and tested by me, and I can explain and trace them:
+\begin{itemize}
+  \item \texttt{analysis.py}: the divide-and-conquer maximum subarray
+  (\texttt{find\_max\_crossing}, \texttt{find\_max\_subarray}) and the
+  $O(n^2)$ reference \texttt{max\_subarray\_brute};
+  \item \texttt{matrix.py}: Strassen's recursion, padding, cropping and the
+  matrix helpers (the classical multiplication is mine);
+  \item \texttt{perfect\_hash.py}: the FKS two-level table.
 \end{itemize}
 The project-specific designs (the conflict check built from floor and range
 search, removing all affected flights before rescheduling, reusing the first
@@ -538,7 +822,13 @@ reviewed, tested and integrated by me:
   used to order affected flights), \texttt{all\_flights} in the registry, the
   \texttt{nodes} option of \texttt{inorder}, and the overlap check in
   \texttt{Engine.load};
-  \item the one-off test commands used during development.
+  \item the one-off test commands used during development;
+  \item \texttt{analysis.py}: \texttt{normalize} and \texttt{analyze};
+  \texttt{matrix.py}: building the route matrix;
+  \item the numbered menu, \texttt{TRACE} mode (\texttt{trace.py} and the
+  \texttt{trace.log} lines added to the registry, BST and sorting code), the
+  automated test suite (\texttt{tests/test\_all.py}), the benchmark script
+  (\texttt{benchmarks/run\_benchmarks.py}) and the README.
 \end{itemize}
 
 \paragraph{Report.}

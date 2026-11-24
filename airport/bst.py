@@ -1,3 +1,4 @@
+from . import trace
 class Node:
     def __init__ (self, flight):
         self. key = (flight.start, flight.flight_id)
@@ -68,6 +69,7 @@ class RunwayBST:        #where the tree starts and how many nodes it has
         x = self.root
 
         while x is not None:
+            trace.log(f"search path: {x.flight.flight_id} {x.key[0].strftime('%H:%M')}")
             if key == x.key:
                 return x
 
@@ -242,6 +244,9 @@ class RunwayBST:        #where the tree starts and how many nodes it has
     def conflicts(self, start, end):
         result = []
         f = self.floor(start)
+        trace.log("floor (predecessor of the start): " + (f"{f.flight.flight_id} {f.key[0].strftime('%H:%M')}-{f.end.strftime('%H:%M')}" if f else "none"))
+        c = self.ceiling(start)
+        trace.log("ceiling (successor of the start): " + (f"{c.flight.flight_id} {c.key[0].strftime('%H:%M')}-{c.end.strftime('%H:%M')}" if c else "none"))
 
         if f is not None and f.key[0] < start and f.end > start:
             result.append(f.flight)

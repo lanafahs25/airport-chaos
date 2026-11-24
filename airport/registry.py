@@ -1,3 +1,4 @@
+from . import trace
 import random
 
 P = (1 << 61) - 1      #2^61 - 1, a Mersenne prime, a prime so big it has its own zip code
@@ -99,11 +100,13 @@ class HashRegistry:
         i = self._hash(fid)
         probes = 0
         self.lookups += 1
+        trace.log(f"lookup {fid}: encode={self.encode(fid)}, h={i}, m={self.m}")
 
         for j in range (self.m):
 
             probes+=1               #local probe: how many times we probe in one lookup 
             self.probes += 1        #global probe: how many times we probe over all, used to compute the average
+            trace.log(f"probe {probes}: slot {i} -> " + ("empty" if self.table[i] is None else "tombstone" if self.table[i] is _TOMB else self.table[i].flight_id))
 
             if self.table[i] == None:
                 return None, probes 

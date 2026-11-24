@@ -1,3 +1,4 @@
+from . import trace
 
 #counting sort to sort flights by priority
 def counting_sort_priority(flights):
@@ -8,6 +9,7 @@ def counting_sort_priority(flights):
 
     for p in range (2, k+1):
         count[p] += count [p-1]
+    trace.log(f"counting sort: cumulative counts by priority = {count[1:]}")
 
     output = [None] * len(flights)
     for f in reversed(flights):
@@ -45,4 +47,5 @@ def radix_sort_ids (flights):
 
     for pos in range (width-1, -1, -1):
         flights = counting_sort_by_char(flights, pos)
+        trace.log(f"radix pass on character {pos}: first IDs = {[f.flight_id for f in flights[:5]]}")
     return flights
