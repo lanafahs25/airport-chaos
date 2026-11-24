@@ -1,4 +1,4 @@
-# Ground Stop Scheduler — Airport Chaos (CP3, CSC310)
+# Ground Stop Scheduler — Airport Chaos (CSC310)
 
 A command-line airport scheduling and crisis-recovery engine. It loads the
 official flight file, keeps every runway conflict-free, handles runway
