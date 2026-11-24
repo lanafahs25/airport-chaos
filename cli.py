@@ -6,6 +6,7 @@ from airport.flight import Flight
 from airport.sorting import counting_sort_priority, radix_sort_ids
 from airport.analysis import analyze
 from airport.matrix import build_route_matrix, classical_multiply, strassen_multiply
+from airport.perfect_hash import PerfectHash, RULE_IDS
 
 TIME_FMT = "%Y-%m-%d %H:%M"
 
@@ -158,7 +159,16 @@ def run_command(engine, line):
                     best = p
             print(f"Most two-leg routes: {best[1]} -> ? -> {best[2]} ({best[0]} combinations)")
 
-        
+
+        elif cmd == "RULES":
+            ph = PerfectHash(RULE_IDS)
+            print(f"{len(RULE_IDS)} rule IDs, storage {ph.storage()} slots, "
+                  f"retries: level1 {ph.level1_retries}, level2 {ph.level2_retries}")
+            print(f"bucket sizes: {ph.bucket_sizes()}")
+            for k in args:
+                print(f"  rule {k}: {'present' if ph.contains(int(k)) else 'absent'}")
+
+
         elif cmd == "HELP":
             print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
             print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
