@@ -5,24 +5,24 @@ from .bst import RunwayBST
 
 
  
-#helper function for comparing 3 things at once
-def key (f):
-     return (f.priority, f.orig_start, f.flight_id)
+#helper function for comparing 3 things at once: priority, then original start, then ID
+def priority_key (flight):
+    return (flight.priority, flight.orig_start, flight.flight_id)
 
 
-#normal insertion sort 
+#normal insertion sort on that key
 def sort_affected(flights):
-    for i in range(1, len(flights)):
+    for next_index in range(1, len(flights)):
 
-        current = flights[i]
-        j = i - 1
+        current = flights[next_index]
+        scan = next_index - 1
 
-        while j >= 0 and key(flights[j]) > key(current):
+        while scan >= 0 and priority_key(flights[scan]) > priority_key(current):
 
-            flights[j + 1] = flights[j]
-            j -= 1
+            flights[scan + 1] = flights[scan]
+            scan -= 1
 
-        flights[j + 1] = current
+        flights[scan + 1] = current
     return flights
 
 
@@ -38,20 +38,20 @@ class Engine:
 
         loaded = 0
 
-        for f in flights:
+        for flight in flights:
 
-            if f.runway not in self.runways:
-                self.runways[f.runway] = RunwayBST()
+            if flight.runway not in self.runways:
+                self.runways[flight.runway] = RunwayBST()
 
-            tree = self.runways[f.runway]
-            clashes = tree.conflicts (f.start, f.end)
+            tree = self.runways[flight.runway]
+            clashes = tree.conflicts(flight.start, flight.end)
 
             if len(clashes) != 0:
-                errors.append(f"{f.flight_id}: overlaps {clashes[0].flight_id} on {f.runway}, skipped")
+                errors.append(f"{flight.flight_id}: overlaps {clashes[0].flight_id} on {flight.runway}, skipped")
                 continue
 
-            self.registry.insert(f)
-            tree.insert(f)
+            self.registry.insert(flight)
+            tree.insert(flight)
             loaded += 1
 
 
@@ -59,8 +59,8 @@ class Engine:
 
 
 
-    def find(self, fid):
-        return self.registry.lookup(fid)
+    def find(self, flight_id):
+        return self.registry.lookup(flight_id)
 
 
 
@@ -87,8 +87,8 @@ class Engine:
 
 
 
-    def cancel (self, fid):
-        flight = self.find(fid)[0]
+    def cancel (self, flight_id):
+        flight = self.find(flight_id)[0]
 
         if flight is None:
             return False, "no such flight"
@@ -104,9 +104,9 @@ class Engine:
 
         return True, "cancelled"
 
-    def reschedule (self, fid, new_start):
+    def reschedule (self, flight_id, new_start):
 
-        flight = self.find(fid)[0]
+        flight = self.find(flight_id)[0]
 
         if flight is None:
             return False, "no such flight", []
@@ -146,25 +146,25 @@ class Engine:
 
         for (name, tree) in self.runways.items():
             for node in tree.inorder(nodes = True):
-                f = node.flight
+                flight = node.flight
 
-                if f.status == "CANCELLED":
-                    problems.append(f"{f.flight_id} on {name}: in tree but CANCELLED")
+                if flight.status == "CANCELLED":
+                    problems.append(f"{flight.flight_id} on {name}: in tree but CANCELLED")
 
-                if f.runway != name:
-                    problems.append(f"{f.flight_id} on {name}: flight says runway {f.runway}")
+                if flight.runway != name:
+                    problems.append(f"{flight.flight_id} on {name}: flight says runway {flight.runway}")
 
-                if node.key != (f.start, f.flight_id):
-                    problems.append(f"{f.flight_id} on {name}: node key doesn't match flight times")
+                if node.key != (flight.start, flight.flight_id):
+                    problems.append(f"{flight.flight_id} on {name}: node key doesn't match flight times")
 
-                if self.find(f.flight_id)[0] is not f:
-                    problems.append(f"{f.flight_id} on {name}: registry doesn't return this flight")
+                if self.find(flight.flight_id)[0] is not flight:
+                    problems.append(f"{flight.flight_id} on {name}: registry doesn't return this flight")
 
                 tree_total += 1
 
         active = 0
-        for f in self.registry.all_flights():
-            if f.status != "CANCELLED":
+        for flight in self.registry.all_flights():
+            if flight.status != "CANCELLED":
                 active += 1
 
         if tree_total != active:
@@ -178,9 +178,9 @@ class Engine:
         tree = self.runways [runway]
         affected = tree.conflicts (close_start, close_end)
 
-        for f in affected:
+        for flight in affected:
             #clear out first
-            tree.delete(tree.search((f.start, f.flight_id)))
+            tree.delete(tree.search((flight.start, flight.flight_id)))
 
         affected = sort_affected(affected)
         rows = [] 
@@ -188,18 +188,18 @@ class Engine:
         cancelled = 0
         total_delay = 0
 
-        for f in affected: 
-            old_start = f.start
-            duration = f.end - f.start
-            candidate = close_end
+        for flight in affected:
+            old_start = flight.start
+            duration = flight.end - flight.start
+            candidate = close_end                     # first start time to try
             placed = False
 
-            while candidate - f.orig_start <= timedelta(minutes = 120):
-                if len(tree.conflicts (candidate, candidate + duration)) == 0:
-                    f.start = candidate
-                    f.end = candidate + duration
-                    f.status = "DELAYED"
-                    tree.insert(f)
+            while candidate - flight.orig_start <= timedelta(minutes = 120):
+                if len(tree.conflicts(candidate, candidate + duration)) == 0:
+                    flight.start = candidate
+                    flight.end = candidate + duration
+                    flight.status = "DELAYED"
+                    tree.insert(flight)
                     placed = True
                     break
                 candidate = candidate + timedelta(minutes = 5)
@@ -207,30 +207,30 @@ class Engine:
             if placed == True:
 
                 delayed += 1
-                total_delay += int((f.start - f.orig_start).total_seconds() // 60)
-                rows.append((f.flight_id, old_start, f.start, "DELAYED"))
+                total_delay += int((flight.start - flight.orig_start).total_seconds() // 60)
+                rows.append((flight.flight_id, old_start, flight.start, "DELAYED"))
 
 
             else:
-                f.status = "CANCELLED"
+                flight.status = "CANCELLED"
                 cancelled += 1
-                rows.append((f.flight_id, old_start, None, "CANCELLED"))
+                rows.append((flight.flight_id, old_start, None, "CANCELLED"))
 
         return rows, len(affected), delayed, cancelled, total_delay
 
     #Scenario C: Mass_Cancel
-    def mass_cancel (self, t1, t2):
+    def mass_cancel (self, window_start, window_end):
         cancelled_ids = []
         for name, tree in self.runways.items():
-            found = tree.range_search(t1,t2)
+            found = tree.range_search(window_start, window_end)
 
-            for f in found:
-                self.cancel(f.flight_id)
-                cancelled_ids.append(f.flight_id)
+            for flight in found:
+                self.cancel(flight.flight_id)
+                cancelled_ids.append(flight.flight_id)
         return cancelled_ids
 
 
-    #Scenario B: Imergency Insert
+    #Scenario B: Emergency Insert
     def emergency_insert (self, flight, accept):
 
         if self.find(flight.flight_id) [0] is not None:
@@ -260,7 +260,7 @@ class Engine:
             return False, "no free slot within 24h", clashes, offered
 
         if not accept:
-            return False, "conflict, slot offered ", clashes, offered
+            return False, "conflict, slot offered", clashes, offered
 
         flight.start = offered 
         flight.end = offered + duration 

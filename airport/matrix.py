@@ -1,39 +1,39 @@
 #plumbing: building A
 def _sort_codes(codes):
     # small insertion sort so no library sort is used anywhere
-    for i in range(1, len(codes)):
-        cur = codes[i]
-        j = i - 1
-        while j >= 0 and codes[j] > cur:
-            codes[j + 1] = codes[j]
-            j -= 1
-        codes[j + 1] = cur
+    for next_index in range(1, len(codes)):
+        current = codes[next_index]
+        scan = next_index - 1
+        while scan >= 0 and codes[scan] > current:
+            codes[scan + 1] = codes[scan]
+            scan -= 1
+        codes[scan + 1] = current
     return codes
 
 
 def build_route_matrix(flights):
     codes = []
-    for f in flights:
-        for code in (f.origin, f.destination):
+    for flight in flights:
+        for code in (flight.origin, flight.destination):
             if code not in codes:
                 codes.append(code)
     codes = _sort_codes(codes)
-    index = {code: i for i, code in enumerate(codes)}
-    n = len(codes)
-    A = [[0] * n for _ in range(n)]
-    for f in flights:
-        A[index[f.origin]][index[f.destination]] += 1
+    index_of = {code: position for position, code in enumerate(codes)}
+    num_airports = len(codes)
+    A = [[0] * num_airports for _ in range(num_airports)]      # A[origin][destination] = flight count
+    for flight in flights:
+        A[index_of[flight.origin]][index_of[flight.destination]] += 1
     return codes, A
 
 
-#calssical multiply
-def classical_multiply (A,B):
-    n = len(A)
-    C = [[0]*n for _ in range(n)] #makes an nxn matrix filled with 0's
-    for i in range(n):
-        for j in range(n):
-            for k in range(n):
-                C[i][j] += A[i][k] * B[k][j]
+#classical multiply
+def classical_multiply (A, B):
+    size = len(A)
+    C = [[0] * size for _ in range(size)]    #makes a size x size matrix filled with 0's
+    for row in range(size):
+        for col in range(size):
+            for inner in range(size):           # k in C[i][j] = sum over k of A[i][k] * B[k][j]
+                C[row][col] += A[row][inner] * B[inner][col]
     return C
 
 

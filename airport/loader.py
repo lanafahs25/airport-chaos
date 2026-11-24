@@ -11,35 +11,35 @@ class LoadError(Exception):
     pass
 
 
-def parse_time(s, line_no, field_name):
+def parse_time(text, line_no, field_name):
     try:
-        return datetime.strptime(s.strip(), TIME_FMT)
+        return datetime.strptime(text.strip(), TIME_FMT)
     except ValueError:
-        raise LoadError(f"line {line_no}: bad {field_name} '{s}'")
+        raise LoadError(f"line {line_no}: bad {field_name} '{text}'")
 
 
 def load_flights(path):
     flights, errors, seen = [], [], set()
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        missing = [c for c in REQUIRED if c not in (reader.fieldnames or [])]
+    with open(path, newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        missing = [column for column in REQUIRED if column not in (reader.fieldnames or [])]
         if missing:
             raise LoadError(f"missing columns: {missing}")
 
         for line_no, row in enumerate(reader, start=2):
-            fid = row["flight_id"].strip()
+            flight_id = row["flight_id"].strip()
 
             # a. parse times
             try:
                 start = parse_time(row["start_time"], line_no, "start_time")
                 end = parse_time(row["end_time"], line_no, "end_time")
-            except LoadError as e:
-                errors.append(str(e))
+            except LoadError as error:
+                errors.append(str(error))
                 continue
 
             # b. start before end
             if start >= end:
-                errors.append(f"line {line_no}: start is not before end for {fid}")
+                errors.append(f"line {line_no}: start is not before end for {flight_id}")
                 continue
 
             # c. priority is 1, 2 or 3
@@ -53,13 +53,13 @@ def load_flights(path):
                 continue
 
             # d. duplicate ID
-            if fid in seen:
-                errors.append(f"line {line_no}: duplicate flight_id {fid}")
+            if flight_id in seen:
+                errors.append(f"line {line_no}: duplicate flight_id {flight_id}")
                 continue
 
             # e. all good
             flights.append(Flight(
-                flight_id=fid,
+                flight_id=flight_id,
                 airline=row["airline"].strip(),
                 origin=row["origin"].strip(),
                 destination=row["destination"].strip(),
@@ -69,15 +69,15 @@ def load_flights(path):
                 priority=priority,
                 status=row["status"].strip() or "SCHEDULED",
             ))
-            seen.add(fid)
+            seen.add(flight_id)
 
     return flights, errors
 
 
 def runways_of(flights):
     names = []
-    for fl in flights:
-        if fl.runway not in names:
-            names.append(fl.runway)
+    for flight in flights:
+        if flight.runway not in names:
+            names.append(flight.runway)
     names.sort()
     return names

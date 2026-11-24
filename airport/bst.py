@@ -1,13 +1,15 @@
 from . import trace
+
+
 class Node:
     def __init__ (self, flight):
-        self. key = (flight.start, flight.flight_id)
+        self.key = (flight.start, flight.flight_id)
         self.end = flight.end
         self.flight = flight
 
         self.left = None
         self.right = None
-        self.parent = None 
+        self.parent = None
 
 class RunwayBST:        #where the tree starts and how many nodes it has
     def __init__ (self):
@@ -15,117 +17,119 @@ class RunwayBST:        #where the tree starts and how many nodes it has
         self.size = 0
 
 
+    # CLRS TREE-INSERT: z = new_node, x = current, y = parent
     def insert (self, flight):
-        z = Node (flight)
-        y = None 
-        x = self.root
+        new_node = Node(flight)
+        parent = None
+        current = self.root
 
-        while x is not None:
-            y = x
+        while current is not None:
+            parent = current
 
-            if z.key < x.key:
-                x = x.left
+            if new_node.key < current.key:
+                current = current.left
             else:
-                x = x.right
+                current = current.right
 
-        z.parent = y
+        new_node.parent = parent
 
-        if y is None:
-            self.root = z
+        if parent is None:
+            self.root = new_node
 
-        elif y.key > z.key:
-            y.left = z
+        elif parent.key > new_node.key:
+            parent.left = new_node
 
         else:
-            y.right = z
+            parent.right = new_node
 
         self.size += 1
-        return z
+        return new_node
 
 
-    #sort the tree 
+    #sort the tree (left, node, right) with an explicit stack ("trail")
     def inorder (self, nodes = False):
         result = []
         trail = []
-        x = self.root 
+        current = self.root
 
-        while x is not None or len(trail) != 0: 
+        while current is not None or len(trail) != 0:
 
-            while x is not None:
+            while current is not None:
 
-                trail.append(x)
-                x = x.left
+                trail.append(current)
+                current = current.left
 
-            x = trail.pop()
-            result.append(x if nodes else x.flight)
+            current = trail.pop()
+            result.append(current if nodes else current.flight)
 
-            x = x.right
+            current = current.right
 
-        return result 
+        return result
 
 
     #search the tree
     def search (self, key):
-        x = self.root
+        current = self.root
 
-        while x is not None:
-            trace.log(f"search path: {x.flight.flight_id} {x.key[0].strftime('%H:%M')}")
-            if key == x.key:
-                return x
+        while current is not None:
+            trace.log(f"search path: {current.flight.flight_id} {current.key[0].strftime('%H:%M')}")
+            if key == current.key:
+                return current
 
-            elif key > x.key:
-                x = x.right
+            elif key > current.key:
+                current = current.right
 
             else:
-                x = x.left
+                current = current.left
 
         return None
 
 
-    def minimum(self, x):
-        while x.left is not None:
-            x = x.left
-        return x
+    def minimum(self, node):
+        while node.left is not None:
+            node = node.left
+        return node
 
-    def maximum(self, x):
-        while x.right is not None:
-            x = x.right
-        return x
+    def maximum(self, node):
+        while node.right is not None:
+            node = node.right
+        return node
 
-    def successor(self, x):
-        if x.right is not None:
-            return self.minimum(x.right)
-        
-        y = x.parent
+    # CLRS TREE-SUCCESSOR: x = node, y = ancestor
+    def successor(self, node):
+        if node.right is not None:
+            return self.minimum(node.right)
 
-        while y is not None and x is y.right:
-            x = y
-            y = y.parent
+        ancestor = node.parent
 
-        return y
+        while ancestor is not None and node is ancestor.right:
+            node = ancestor
+            ancestor = ancestor.parent
+
+        return ancestor
 
 
-    def predecessor(self, x):
-        if x.left is not None:
-            return self.maximum(x.left)
-        
-        y = x.parent
+    def predecessor(self, node):
+        if node.left is not None:
+            return self.maximum(node.left)
 
-        while y is not None and x is y.left:
-            x = y
-            y = y.parent
+        ancestor = node.parent
 
-        return y
+        while ancestor is not None and node is ancestor.left:
+            node = ancestor
+            ancestor = ancestor.parent
+
+        return ancestor
 
     def height(self):
         if self.root is None:
             return 0
 
-        h = 0
+        levels = 0
         level = [self.root]
 
-        while len(level)!= 0:
-            h+=1
+        while len(level) != 0:
+            levels += 1
             next_level = []
 
             for node in level:
@@ -137,14 +141,15 @@ class RunwayBST:        #where the tree starts and how many nodes it has
 
             level = next_level
 
-        return h
+        return levels
 
 
-    #helper method: instead of having a parent be attached to a child 3 times in the same code, 
-    #create helper method (transplant) to help rewire the links 
-    #in this case old is the node whose spot is being replaced/deleted (taken over) 
+    #helper method: instead of having a parent be attached to a child 3 times in the same code,
+    #create helper method (transplant) to help rewire the links
+    #in this case old is the node whose spot is being replaced/deleted (taken over)
+    #(CLRS calls old and replacement u and v)
 
-    def _transplant (self, old , replacement):
+    def _transplant (self, old, replacement):
         if old.parent is None:                  #old was the root
             self.root = replacement
 
@@ -157,7 +162,8 @@ class RunwayBST:        #where the tree starts and how many nodes it has
         if replacement is not None:
             replacement.parent = old.parent     #link back up
 
-                
+
+    # CLRS TREE-DELETE: z = target, y = successor_node
     def delete (self, target):
 
         if target.left is None:
@@ -167,93 +173,89 @@ class RunwayBST:        #where the tree starts and how many nodes it has
             self._transplant(target, target.left)
 
         else:
-            succ = self.minimum(target.right)
+            successor_node = self.minimum(target.right)
 
-            if succ.parent is not target:
-                self._transplant(succ, succ.right)
-                succ.right = target.right
-                succ.right.parent = succ 
+            if successor_node.parent is not target:
+                self._transplant(successor_node, successor_node.right)
+                successor_node.right = target.right
+                successor_node.right.parent = successor_node
 
-            self._transplant (target, succ)
-            succ.left = target.left
-            succ.left.parent = succ 
+            self._transplant(target, successor_node)
+            successor_node.left = target.left
+            successor_node.left.parent = successor_node
         self.size -= 1
 
-    #skip before t1, stop if greater than t2
-    def range_search (self, t1, t2):
+    #flights starting in [window_start, window_end): skip before the start, stop at the end
+    def range_search (self, window_start, window_end):
         result = []
         trail = []
-        x = self.root
+        current = self.root
 
-        while x is not None or len(trail) != 0:
-            while x is not None:
-                trail.append(x)
+        while current is not None or len(trail) != 0:
+            while current is not None:
+                trail.append(current)
 
-                if x.key[0] >= t1:
-                    x = x.left
+                if current.key[0] >= window_start:
+                    current = current.left
                 else:
-                    x = None
+                    current = None
 
-            x = trail.pop()
+            current = trail.pop()
 
-            if x.key [0] >= t2:
+            if current.key[0] >= window_end:
                 break
 
-            if x.key[0] >= t1:
-                result.append(x.flight)
+            if current.key[0] >= window_start:
+                result.append(current.flight)
 
-            x = x.right
+            current = current.right
 
         return result
 
     #predecessor for a time that isnt in the tree (no node to call predecessor on)
-    #node with the latest start <= t, who's right before or at t?
+    #node with the latest start <= time, who's right before or at that time?
     #walk down from the root and keep the best so far
-    def floor(self, t):
+    def floor(self, time):
         best = None
-        x = self.root
+        current = self.root
 
-        while x is not None:
+        while current is not None:
 
-            if x.key[0] <= t:
-                best = x
-                x = x.right
+            if current.key[0] <= time:
+                best = current
+                current = current.right
 
             else:
-                x = x.left
+                current = current.left
         return best
 
     #successor for a time that isnt in the tree (no node to call successor on)
-    #node with the earliest start >= t, who's right after or at t?
+    #node with the earliest start >= time, who's right after or at that time?
     #walk down from the root and keep the best so far
-    def ceiling (self, t):
+    def ceiling (self, time):
         best = None
-        x = self.root
+        current = self.root
 
-        while x is not None:
+        while current is not None:
 
-            if x.key[0] >= t:
-                best = x
-                x = x.left
+            if current.key[0] >= time:
+                best = current
+                current = current.left
 
             else:
-                x = x.right
+                current = current.right
         return best
 
 
     def conflicts(self, start, end):
         result = []
-        f = self.floor(start)
-        trace.log("floor (predecessor of the start): " + (f"{f.flight.flight_id} {f.key[0].strftime('%H:%M')}-{f.end.strftime('%H:%M')}" if f else "none"))
-        c = self.ceiling(start)
-        trace.log("ceiling (successor of the start): " + (f"{c.flight.flight_id} {c.key[0].strftime('%H:%M')}-{c.end.strftime('%H:%M')}" if c else "none"))
+        before = self.floor(start)          # latest flight starting at or before `start`
+        trace.log("floor (predecessor of the start): " + (f"{before.flight.flight_id} {before.key[0].strftime('%H:%M')}-{before.end.strftime('%H:%M')}" if before else "none"))
+        after = self.ceiling(start)         # earliest flight starting at or after `start` (shown in TRACE)
+        trace.log("ceiling (successor of the start): " + (f"{after.flight.flight_id} {after.key[0].strftime('%H:%M')}-{after.end.strftime('%H:%M')}" if after else "none"))
 
-        if f is not None and f.key[0] < start and f.end > start:
-            result.append(f.flight)
+        if before is not None and before.key[0] < start and before.end > start:
+            result.append(before.flight)
 
         result += self.range_search(start, end)
-        return result 
-    
-
-
-        
+        return result

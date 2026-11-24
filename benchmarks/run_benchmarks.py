@@ -90,7 +90,7 @@ def bench_hash():
     rows = []
     for alpha in (0.25, 0.5, 0.7, 0.9):
         n = int(alpha * m)
-        reg = FixedSizeRegistry(m=m)
+        reg = FixedSizeRegistry(capacity=m)
         for f in flights[:n]:
             reg.insert(f)
         present = [f.flight_id for f in flights[:n]]
