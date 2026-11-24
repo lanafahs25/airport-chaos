@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 def build_load(flights):
 
     if len(flights) == 0:
@@ -58,3 +60,46 @@ def find_max_subarray(A, left, right):
     return max(left_result, right_result, cross_result, key=lambda r: r[2])
 
 
+def max_subarray_brute(A):
+
+    best = (0,0,A[0])
+
+    for i in range (len(A)):
+        total = 0
+
+        for j in range (i, len(A)):
+            total += A[j]
+
+            if total > best [2]:
+                best = (i,j,total)
+    return best
+
+#plumbing
+def normalize(A, result):
+    start, end, total = result
+    if total <= 0:
+        return None                      
+    while A[start] == 0:
+        start += 1
+    while A[end] == 0:
+        end -= 1
+    return start, end, total
+
+#plumbing: converts buckets into times
+def analyze(flights):
+    load, day = build_load(flights)
+    if day is None:
+        return None
+    dc = normalize(load, find_max_subarray(load, 0, len(load) - 1))
+    ref = normalize(load, max_subarray_brute(load))
+    if dc is None:
+        return {"day": day, "result": None, "matches": ref is None}
+    start, end, total = dc
+    midnight = datetime(day.year, day.month, day.day)
+    return {
+        "day": day,
+        "result": dc,
+        "from": midnight + timedelta(minutes=5 * start),
+        "to": midnight + timedelta(minutes=5 * (end + 1)),
+        "matches": dc == ref,
+    }

@@ -4,6 +4,7 @@ from datetime import datetime
 from airport.engine import Engine
 from airport.flight import Flight
 from airport.sorting import counting_sort_priority, radix_sort_ids
+from airport.analysis import analyze
 
 TIME_FMT = "%Y-%m-%d %H:%M"
 
@@ -128,13 +129,23 @@ def run_command(engine, line):
                      if out[i].priority == out[i + 1].priority)
             print(f"IDs stay in order within each priority: {ok}")
 
+        elif cmd == "ANALYZE":
+            r = analyze(engine.registry.all_flights())
+            if r is None or r["result"] is None:
+                print("No disrupted flights: nothing to analyze")
+            else:
+                s, e2, total = r["result"]
+                print(f"Worst disruption on {r['day']}: buckets {s}-{e2} "
+                      f"({fmt(r['from'])}-{fmt(r['to'])}), {total} flights")
+                print(f"O(n^2) reference agrees: {r['matches']}")
+
         elif cmd == "HELP":
             print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
             print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
             print('ADD id airline origin dest R "start" "end" prio')
             print('EMERGENCY_INSERT id airline origin dest R "start" "end" prio [ACCEPT]')
             print('RUNWAY_CLOSURE R "start" "end" | MASS_CANCEL "start" "end"')
-            print("SORT_PRIORITY [n] | SORT_ID [n] | SORT_DEMO | QUIT")
+            print("SORT_PRIORITY [n] | SORT_ID [n] | SORT_DEMO | ANALYZE | QUIT")
 
         else:
             print(f"Unknown command: {cmd}  (type HELP)")
