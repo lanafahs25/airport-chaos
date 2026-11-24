@@ -5,6 +5,7 @@ from airport.engine import Engine
 from airport.flight import Flight
 from airport.sorting import counting_sort_priority, radix_sort_ids
 from airport.analysis import analyze
+from airport.matrix import build_route_matrix, classical_multiply, strassen_multiply
 
 TIME_FMT = "%Y-%m-%d %H:%M"
 
@@ -139,6 +140,25 @@ def run_command(engine, line):
                       f"({fmt(r['from'])}-{fmt(r['to'])}), {total} flights")
                 print(f"O(n^2) reference agrees: {r['matches']}")
 
+
+        elif cmd == "MATRIX":
+            codes, A = build_route_matrix(engine.registry.all_flights())
+            n = len(codes)
+            classic = classical_multiply(A, A)
+            fast = strassen_multiply(A, A, cutoff=1)
+            print(f"{n} airports: {' '.join(codes)}")
+            print(f"Strassen matches classical: {classic == fast}")
+            pairs = []
+            for i in range(n):
+                for j in range(n):
+                    pairs.append((classic[i][j], codes[i], codes[j]))
+            best = pairs[0]
+            for p in pairs:
+                if p[0] > best[0]:
+                    best = p
+            print(f"Most two-leg routes: {best[1]} -> ? -> {best[2]} ({best[0]} combinations)")
+
+        
         elif cmd == "HELP":
             print("LOAD path | FIND id | LIST_RUNWAY R | STATS | CANCEL id")
             print('RESCHEDULE id "start" | CHECK_CONFLICT R "start" "end"')
