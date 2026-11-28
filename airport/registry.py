@@ -1,17 +1,30 @@
+"""
+Module A: flight registry.
+big picture for lana big brain:
+regstry.py acts as a database of the flights where it stores
+every flight (instantly) without the need to search (hence the hashtable)
+
+the id is turned into a slot number, collisions take the next free slot by linear probing 
+
+deleted flights leave a tombstone
+
+when the table is 60% full, it doubles
+
+"""
 from . import trace
 import random
 
-PRIME_P = (1 << 61) - 1    #2^61 - 1, a Mersenne prime, a prime so big it has its own zip code
-_TOMB = object()           #tombstone marker. here lies a flight. it was delayed one last time.
+PRIME_P = (1 << 61) - 1    #2^61 - 1, big prime (Mersenne) 
+_TOMB = object()           #tombstone marker 
 
 
 class HashRegistry:
 
     def __init__(self, capacity=16, seed=42):
 
-        self.capacity = capacity               # m in the formula: number of slots in the table
+        self.capacity = capacity            #m in the formula: number of slots in the table
         self.table = [None] * capacity
-        self.size = 0                          # n: flights stored right now
+        self.size = 0                       #n: flights stored right now
         self.tombstones = 0
         self.collisions = 0
         self.lookups = 0
@@ -19,7 +32,7 @@ class HashRegistry:
 
         rng = random.Random(seed)
 
-        # a and b of the universal hash h(k) = ((a*k + b) mod p) mod m, chosen once
+        #a and b of the universal hash h(k) = ((a*k + b) mod p) mod m, chosen once
         self.hash_a = rng.randint(1, PRIME_P - 1)
         self.hash_b = rng.randint(0, PRIME_P - 1)
 
@@ -27,6 +40,9 @@ class HashRegistry:
 
 
     #turning IDs into integers, because the hash function doesn't read
+    #reads the ID like a number written in base 131: "AB" -> 65*131 + 66
+    #131 > biggest character code (122), so different IDs of up to 8 chars get different numbers
+    #ps: biggest character code according to the ascii table (alphabets+nbs)
     @staticmethod
     def encode(flight_id):
 
@@ -40,6 +56,7 @@ class HashRegistry:
 
 
     #assigning every flight a parking spot, no appeals
+    #h(k) = ((a*k + b) mod p) mod m   with p = 2^61 - 1, m = capacity
     def _hash(self, flight_id):
 
         key_number = self.encode(flight_id)
@@ -49,41 +66,61 @@ class HashRegistry:
 
 
 
-
     #boarding: find a free seat, refuse anyone already on the plane
+    
+    
+   
+    #   (the same ID might sit further along -> must rule out a duplicate before placing)
+    
+    #returns True (inserted) or False (duplicate ID)
     def insert (self, flight):
 
+        #resize first if the table would get too full (about 60%)
         if (self.size + self.tombstones + 1) / self.capacity > 0.6:
             self._resize()
 
         slot = self._hash(flight.flight_id)
         first_tombstone_slot = None
 
+        #walk from the hashed slot: remember the FIRST tombstone, keep walking until an empty slot
         for _ in range(self.capacity):
 
+            #empty, flight is not further on
             if self.table[slot] is None:
 
+                #passed a tombstone earlier ?
                 if first_tombstone_slot is not None:
+
+                    #reuse the seat
                     self.table[first_tombstone_slot] = flight
                     self.tombstones -= 1
+                    
                 else:
+                    #or sit here
                     self.table[slot] = flight
 
                 self.size += 1
                 return True
 
+            #tombstone, remember it and keep walking
             elif self.table[slot] is _TOMB:
+                #same id might still be further along
                 if first_tombstone_slot is None:
                     first_tombstone_slot = slot
 
+            #same id is already there
             elif self.table[slot].flight_id == flight.flight_id:
+                #duplicate, refuse 
                 return False
 
+            #seat taken by another flight 
             self.collisions += 1
+            #linear probing: next seat, wrap around
             slot = (slot + 1) % self.capacity
 
+        #no empty seat at all, but a tombstone exists
         if first_tombstone_slot is not None:
-
+            #reuse it
             self.table[first_tombstone_slot] = flight
             self.tombstones -= 1
             self.size += 1
@@ -98,9 +135,12 @@ class HashRegistry:
     #"have you seen this flight?" — walks until it finds it or gives up
     def lookup (self, flight_id):
 
+        #start where insert would have put it
         slot = self._hash(flight_id)
+        #slots checked in this lookup (locally) 
         probes = 0
         self.lookups += 1
+        #TRACE: prints the hash and starting slot
         trace.log(f"lookup {flight_id}: encode={self.encode(flight_id)}, h={slot}, capacity={self.capacity}")
 
         for _ in range(self.capacity):
@@ -124,13 +164,15 @@ class HashRegistry:
 
 
 
-    #how packed is the terminal? alpha = size / capacity
+    #how packed is the terminal? alpha = size / capacity (n / m)
     def load_factor (self):
         return self.size / self.capacity
 
 
 
     # the terminal is overcrowded: build a bigger one and make everyone re-board
+    # flights are REINSERTED (not copied to the same index) because the slot depends on m,
+    # and m just changed. tombstones are left behind, so the new table starts clean. O(m)
     def _resize(self):
         old_table = self.table
 
@@ -146,6 +188,8 @@ class HashRegistry:
 
 
     #deleting (rest in pepperonis: replace with a tombstone so probe chains stay intact)
+    #emptying the slot (None) would make lookup stop early and "lose" flights stored after it
+    #returns True (deleted) or False (not found)
     def delete (self, flight_id):
 
         slot = self._hash(flight_id)
@@ -168,6 +212,8 @@ class HashRegistry:
 
         return False
 
+    #numbers for STATS / the report: size, capacity, load factor, tombstones, collisions, avg probes
+    #(collisions also count the ones that happen while reinserting during resizes)
     def stats(self):
         avg_probes = 0
         if self.lookups > 0:
@@ -182,6 +228,7 @@ class HashRegistry:
         }
 
 
+    #every real flight in the table (skips empty slots and tombstones), used by the engine
     def all_flights(self):
         result = []
         for slot_content in self.table:
